@@ -1,0 +1,9 @@
+(library
+ (name io_uring)
+ (libraries core_kernel.bounded_int_table core)
+ (foreign_stubs (language c) (names io_uring_stubs) (flags -luring))
+ (preprocessor_deps config.h)
+ (preprocess (pps ppx_jane)))
+
+(rule (targets config.h) (deps)
+ (action (bash "cp %{lib:jst-config:config.h} .")))
