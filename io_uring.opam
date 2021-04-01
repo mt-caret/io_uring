@@ -1,0 +1,11 @@
+opam-version: "2.0"
+version: "1.0"
+maintainer: "mtakeda.enigsol@gmail.com"
+authors: ["mt-caret"]
+homepage: "https://github.com/mt-caret/io_uring"
+bug-reports: "https://github.com/mt-caret/io_uring/issues"
+dev-repo: "git+https://github.com/mt-caret/io_uring.git"
+license: "MIT"
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
