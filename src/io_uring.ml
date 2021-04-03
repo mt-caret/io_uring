@@ -122,7 +122,6 @@ let wait t buffer ~timeout =
 
 type 'a t =
   { io_uring : 'a io_uring
-        (* TOIMPL: instead of allcating list, keep a bigstring around *)
   ; completion_buffer : Bigstring.t
   ; mutable completions : int
   }
