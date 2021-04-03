@@ -29,10 +29,7 @@ module Flags = struct
 end
 
 module Kind = struct
-  type _ t =
-    | Poll : [ `Poll ] t
-    | Read : [ `Read ] t
-    | Writev : [ `Writev ] t
+  type _ t = Poll : [ `Poll ] t
 end
 
 module User_data = struct
