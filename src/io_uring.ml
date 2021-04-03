@@ -2,26 +2,16 @@ open Core
 module File_descr = Unix.File_descr
 module Syscall_result = Unix.Syscall_result
 
-(* We use [Int63] rather than [Int] because these flags use 16 bits. *)
-
-module Poll_flags (Flag_values : sig
-  val in_ : Int63.t
-  val pri : Int63.t
-  val out : Int63.t
-  val err : Int63.t
-  val hup : Int63.t
-end) =
-struct end
-
 [%%import "config.h"]
 
 (* TOIMPL: possibly prove for functionality via io_uring_get_probe() *)
-external flag_pollin : unit -> Int63.t = "core_linux_poll_POLLIN_flag"
-external flag_pollpri : unit -> Int63.t = "core_linux_poll_POLLPRI_flag"
-external flag_pollout : unit -> Int63.t = "core_linux_poll_POLLOUT_flag"
-external flag_pollerr : unit -> Int63.t = "core_linux_poll_POLLERR_flag"
-external flag_pollhup : unit -> Int63.t = "core_linux_poll_POLLHUP_flag"
+external flag_pollin : unit -> Int63.t = "poll_POLLIN_flag"
+external flag_pollpri : unit -> Int63.t = "poll_POLLPRI_flag"
+external flag_pollout : unit -> Int63.t = "poll_POLLOUT_flag"
+external flag_pollerr : unit -> Int63.t = "poll_POLLERR_flag"
+external flag_pollhup : unit -> Int63.t = "poll_POLLHUP_flag"
 
+(* We use [Int63] rather than [Int] because these flags use 16 bits. *)
 module Flags = struct
   let none = Int63.zero
   let in_ = flag_pollin ()
@@ -79,23 +69,23 @@ external create
   :  max_submission_entries:Int32.t
   -> max_completion_entries:Int32.t
   -> _ io_uring
-  = "core_linux_io_uring_queue_init"
+  = "io_uring_queue_init_stub"
 
-external close : _ io_uring -> unit = "core_linux_io_uring_queue_exit"
+external close : _ io_uring -> unit = "io_uring_queue_exit_stub"
 
 external poll_add
   :  [> `Poll ] io_uring
   -> File_descr.t
   -> Flags.t
   -> bool
-  = "core_linux_io_uring_prep_poll_add"
+  = "io_uring_prep_poll_add_stub"
 
 external poll_remove
   :  [> `Poll ] io_uring
   -> File_descr.t
   -> Flags.t
   -> bool
-  = "core_linux_io_uring_prep_poll_remove"
+  = "io_uring_prep_poll_remove_stub"
 
 external unsafe_writev
   :  [> `Writev ] io_uring
@@ -103,21 +93,21 @@ external unsafe_writev
   -> Bigstring.t Unix.IOVec.t array
   -> int
   -> bool
-  = "core_linux_io_uring_prep_writev"
+  = "io_uring_prep_writev_stub"
 
 let writev t fd iovecs =
   let count = Array.length iovecs in
   unsafe_writev t fd iovecs count
 ;;
 
-external submit : _ io_uring -> Int63.t = "core_linux_io_uring_submit"
+external submit : _ io_uring -> Int63.t = "io_uring_submit_stub"
 
 external wait_internal
   :  _ io_uring
   -> Bigstring.t
   -> timeout:Int63.t
   -> int
-  = "core_linux_io_uring_wait"
+  = "io_uring_wait_stub"
 
 let wait_timeout_after t buffer span =
   let timeout =
@@ -140,23 +130,14 @@ type 'a t =
   ; mutable completions : int
   }
 
-external io_uring_sizeof_io_uring_cqe
-  :  unit
-  -> int
-  = "core_linux_io_uring_sizeof_io_uring_cqe"
+external io_uring_sizeof_io_uring_cqe : unit -> int = "io_uring_sizeof_io_uring_cqe"
   [@@noalloc]
 
-external io_uring_offsetof_user_data
-  :  unit
-  -> int
-  = "core_linux_io_uring_offsetof_user_data"
+external io_uring_offsetof_user_data : unit -> int = "io_uring_offsetof_user_data"
   [@@noalloc]
 
-external io_uring_offsetof_res : unit -> int = "core_linux_io_uring_offsetof_res"
-  [@@noalloc]
-
-external io_uring_offsetof_flags : unit -> int = "core_linux_io_uring_offsetof_flags"
-  [@@noalloc]
+external io_uring_offsetof_res : unit -> int = "io_uring_offsetof_res" [@@noalloc]
+external io_uring_offsetof_flags : unit -> int = "io_uring_offsetof_flags" [@@noalloc]
 
 let sizeof_io_uring_cqe = io_uring_sizeof_io_uring_cqe ()
 let offsetof_user_data = io_uring_offsetof_user_data ()
