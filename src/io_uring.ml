@@ -28,6 +28,7 @@ module Flags = struct
   end)
 end
 
+(*
 module Kind = struct
   type _ t = Poll : [ `Poll ] t
 end
@@ -58,29 +59,32 @@ module User_data = struct
 
   let sexp_of_t _ t = Pretty.sexp_of_t (Pretty.create t)
 end
+*)
 
 (* TOIMPL: flesh out the interface here *)
 type _ io_uring
 
 external create
-  :  max_submission_entries:Int32.t
-  -> max_completion_entries:Int32.t
+  :  max_submission_entries:int
+  -> max_completion_entries:int
   -> _ io_uring
   = "io_uring_queue_init_stub"
 
 external close : _ io_uring -> unit = "io_uring_queue_exit_stub"
 
 external poll_add
-  :  [> `Poll ] io_uring
+  :  'a io_uring
   -> File_descr.t
   -> Flags.t
+  -> 'a
   -> bool
   = "io_uring_prep_poll_add_stub"
 
 external poll_remove
-  :  [> `Poll ] io_uring
+  :  'a io_uring
   -> File_descr.t
   -> Flags.t
+  -> 'a
   -> bool
   = "io_uring_prep_poll_remove_stub"
 
@@ -140,12 +144,18 @@ let offsetof_user_data = io_uring_offsetof_user_data ()
 let offsetof_res = io_uring_offsetof_res ()
 let offsetof_flags = io_uring_offsetof_flags ()
 
-let cqe_user_data buf i =
-  Bigstring.unsafe_get_int64_le_trunc
+external io_uring_get_user_data : Bigstring.t -> int -> 'a = "io_uring_get_user_data"
+
+let cqe_user_data : type a. Bigstring.t -> int -> a =
+ fun buf i ->
+  (*print_s [%message "cqe_uesr_data" (i : int)]; *)
+  io_uring_get_user_data buf i
+;;
+
+(*Bigstring.unsafe_get_int64_le_trunc
     buf
     ~pos:((i * sizeof_io_uring_cqe) + offsetof_user_data)
-  |> User_data.of_int
-;;
+  |> Obj.magic*)
 
 let cqe_res buf i =
   Bigstring.unsafe_get_int32_le buf ~pos:((i * sizeof_io_uring_cqe) + offsetof_res)
@@ -159,9 +169,7 @@ let create ~max_submission_entries ~max_completion_entries =
   { io_uring = create ~max_submission_entries ~max_completion_entries
   ; completion_buffer =
       (* Bigstring.create (sizeof_io_uring_cqe * Int32.to_int_exn max_completion_entries) *)
-      Bigstring.init
-        (sizeof_io_uring_cqe * Int32.to_int_exn max_completion_entries)
-        (Fn.const 'A')
+      Bigstring.init (sizeof_io_uring_cqe * max_completion_entries) (Fn.const 'A')
   ; completions = 0
   }
 ;;
@@ -183,16 +191,11 @@ let wait_timeout_after t span =
 let wait t ~timeout = t.completions <- wait t.io_uring t.completion_buffer timeout
 
 let iter_completions t ~f =
-  (*print_s [%message "iter_completions" (t.completions : int)];*)
+  (* print_s [%message "iter_completions" (t.completions : int)]; *)
   for i = 0 to t.completions - 1 do
     let user_data = cqe_user_data t.completion_buffer i in
     let res = cqe_res t.completion_buffer i in
     let flags = cqe_flags t.completion_buffer i in
-    (*(match User_data.kind user_data with
-      | Poll ->
-        let file_descr = User_data.file_descr user_data in
-        let flags_ = User_data.flags user_data in
-        print_s [%message "iter" (i : int) (file_descr : File_descr.t) (flags_ : Flags.t) (res : int) (flags : int)]);*)
     f ~user_data ~res ~flags
   done
 ;;

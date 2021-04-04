@@ -33,6 +33,7 @@ module Flags : sig
   val hup : t
 end
 
+(*
 module Kind : sig
   type _ t = Poll : [ `Poll ] t
 end
@@ -47,18 +48,22 @@ module User_data : sig
   val file_descr : [ `Poll ] t -> File_descr.t
   val flags : [ `Poll ] t -> Flags.t
 end
+ *)
 
-type _ t
+type 'a t
 
-val create : max_submission_entries:Int32.t -> max_completion_entries:Int32.t -> _ t
-val close : _ t -> unit
+val create : max_submission_entries:int -> max_completion_entries:int -> _ t
+val close : 'a t -> unit
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
         and will take effect when [submit] is called. *)
-val poll_add : [> `Poll ] t -> File_descr.t -> Flags.t -> bool
+val poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> bool
 
-val poll_remove : [> `Poll ] t -> File_descr.t -> Flags.t -> bool
-val submit : _ t -> int
+(* TOIMPL: [poll_remove] currently doesn't work since we allocate a new location
+ * with [create_user_data]. Possibly mitigate without allocating by returning
+ * an pointer to the value packed in an int? *)
+val poll_remove : 'a t -> File_descr.t -> Flags.t -> 'a -> bool
+val submit : 'a t -> int
 
 (* TOIMPL: fix doc *)
 
@@ -69,11 +74,7 @@ val submit : _ t -> int
 val wait : 'a t -> timeout:[ `Never | `Immediately | `After of Time_ns.Span.t ] -> unit
 
 val wait_timeout_after : 'a t -> Time_ns.Span.t -> unit
-
-val iter_completions
-  :  'a t
-  -> f:(user_data:'a User_data.t -> res:int -> flags:int -> unit)
-  -> unit
+val iter_completions : 'a t -> f:(user_data:'a -> res:int -> flags:int -> unit) -> unit
 
 module Expert : sig
   val clear_completions : 'a t -> unit

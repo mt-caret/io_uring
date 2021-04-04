@@ -68,14 +68,14 @@ CAMLprim value io_uring_queue_init_stub(value v_submission_entries, value v_comp
 
   memset(&p, 0, sizeof(p));
   p.flags = IORING_SETUP_CQSIZE;
-  p.cq_entries = Int32_val(v_completion_entries);
+  p.cq_entries = Int_val(v_completion_entries);
 
   int retcode;
   struct io_uring *io_uring = caml_stat_alloc(sizeof(struct io_uring));
   v_io_uring = caml_alloc_small(1, Abstract_tag);
 
   // TOIMPL : make it possible to set IORING_SETUP_IOPOLL and IORING_SETUP_SQPOLL here.
-  retcode = io_uring_queue_init(Int32_val(v_submission_entries),
+  retcode = io_uring_queue_init(Int_val(v_submission_entries),
                                io_uring,
                                0);
 
@@ -95,31 +95,36 @@ CAMLprim value io_uring_queue_exit_stub(value v_io_uring)
   CAMLreturn(Val_unit);
 }
 
-uint64_t create_user_data(value v_fd, value v_flags) {
-  return (Int63_val(v_flags) << 32) | Long_val(v_fd);
+// handle when user data is LIBURING_UDATA_TIMEOUT (i.e. 18446744073709551615)
+void *create_user_data(value v_a) {
+  value* v_a_p = caml_stat_alloc(sizeof(value));
+  *v_a_p = v_a;
+  caml_register_generational_global_root(v_a_p);
+  //printf("create_user_data: %ld\n", v_a_p);
+  return (void *) v_a_p;
 }
 
-CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags)
+CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags, value v_a)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   // puts("entered io_uring_prep_poll_add");
-  // printf("fd = %d, flags = %d, user_data = %lu\n",
-  //    (int) Long_val(v_fd), (short) Int63_val(v_flags),  create_user_data(v_fd, v_flags));
-
   if (sqe == NULL) {
     // puts("sqe == NULL");
     return Val_bool(true);
   } else {
     // puts("sqe != NULL");
+    //printf("fd = %d, flags = %d, raw_user_data = %ld, user_data = %ld\n",
+    //   (int) Long_val(v_fd), (short) Int63_val(v_flags), v_a, Int_val(v_a));
+
     io_uring_prep_poll_add(sqe,
                           (int) Long_val(v_fd),
                           (short) Int63_val(v_flags));
-    io_uring_sqe_set_data(sqe, (void *) create_user_data(v_fd, v_flags));
+    io_uring_sqe_set_data(sqe, create_user_data(v_a));
     return Val_bool(false);
   }
 }
 
-CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_fd, value v_flags)
+CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_fd, value v_flags, value v_a)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   // puts("entered io_uring_prep_poll_remove");
@@ -128,7 +133,7 @@ CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_fd, valu
     return Val_bool(true);
   } else {
     io_uring_prep_poll_remove((struct io_uring_sqe *) Data_abstract_val(sqe),
-                              (void *) create_user_data(v_fd, v_flags));
+                              create_user_data(v_a));
     return Val_bool(false);
   }
 }
@@ -139,20 +144,19 @@ CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_fd, value v_i
 
 CAMLprim value io_uring_submit_stub(value v_io_uring)
 {
-  // puts("entered io_uring_prep_submit");
   return Val_int(io_uring_submit(Io_uring_val(v_io_uring)));
 }
 
 #define NSECS_IN_SEC 1000000000LL
 
+// TODO: possibly release runtime lock for longer periods of time?
 CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeout)
 {
   CAMLparam3(v_io_uring, v_array, v_timeout);
   int retcode;
   struct io_uring_cqe *cqe;
   long long timeout = Long_val(v_timeout);
-
-  //puts("entering io_uring_wait");
+  struct io_uring *io_uring = Io_uring_val(v_io_uring);
 
   /*
    * timeout, in nanoseconds returns immediately if 0 is given, waits
@@ -160,7 +164,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
    */
   if (timeout == 0) {
     /* returns immediately, skip enter()/leave() pair */
-    retcode = io_uring_peek_cqe(Io_uring_val(v_io_uring), &cqe);
+    retcode = io_uring_peek_cqe(io_uring, &cqe);
 
     // TOIMPL: under heavy load, we sometimes seem to get ETIME; should investigate
     if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
@@ -171,7 +175,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
   } else if (timeout < 0) {
 
     caml_enter_blocking_section();
-    retcode = io_uring_wait_cqe(Io_uring_val(v_io_uring), &cqe);
+    retcode = io_uring_wait_cqe(io_uring, &cqe);
     caml_leave_blocking_section();
 
     if (retcode < 0) uerror("io_uring_wait_cqe", Nothing);
@@ -182,7 +186,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     };
 
     caml_enter_blocking_section();
-    retcode = io_uring_wait_cqe_timeout(Io_uring_val(v_io_uring), &cqe, &ts);
+    retcode = io_uring_wait_cqe_timeout(io_uring, &cqe, &ts);
     caml_leave_blocking_section();
 
     if (retcode != -ETIME && retcode < 0) {
@@ -199,6 +203,18 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
   while (cqe != NULL && num_seen < max_cqes) {
     memcpy(buffer, cqe, sizeof(struct io_uring_cqe));
 
+    //puts("io_uring_wait: in loop");
+    // buffer->user_data doesn't contain the value passed in, but rather a
+    // pointer to it which is located on the heap (so it doesn't become invalid
+    // while the kernel is processing the sqe) and registered as a global root
+    // (so what it points to is updated accordingly).
+    value *v_a_p = (value *) buffer->user_data;
+    //printf("io_uring_wait: user_data: %ld, res: %d, flags: %d\n",cqe->user_data, cqe->res, cqe->flags);
+    buffer->user_data = *v_a_p;
+    //printf("cqe raw_user_data = %ld, user_data = %ld\n", *v_a_p, Int_val(*v_a_p));
+    caml_remove_generational_global_root(v_a_p);
+    caml_stat_free(v_a_p);
+
     io_uring_cqe_seen(Io_uring_val(v_io_uring), cqe);
 
     retcode = io_uring_peek_cqe(Io_uring_val(v_io_uring), &cqe);
@@ -213,7 +229,13 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     buffer++;
   }
 
-  //printf("num_seen: %d\n", num_seen);
+  //if (num_seen) {
+  //  printf("num_seen: %d\n", num_seen);
+  //}
 
   CAMLreturn(Val_int(num_seen));
+}
+
+CAMLprim value io_uring_get_user_data(value v_array, value v_index) {
+  return ((struct io_uring_cqe *) Caml_ba_data_val(v_array) + Int_val(v_index))->user_data;
 }
