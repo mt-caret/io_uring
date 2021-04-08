@@ -43,18 +43,15 @@ val close : 'a t -> unit
         and will take effect when [submit] is called. *)
 val poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> 'a Tag.Option.t
 
-(* TOIMPL: [poll_remove] currently doesn't work since we allocate a new location
- * with [create_user_data]. Possibly mitigate without allocating by returning
- * an pointer to the value packed in an int? *)
 val poll_remove : 'a t -> 'a Tag.t -> bool
 val submit : 'a t -> int
 
 (* TOIMPL: fix doc *)
 
 (** [wait] waits for events until [~timeout] has passed (in nanoseconds),
-        then returns the tag given to it by [poll_add] and 0 if it has timed out.
-        passing in 0 for [~timeout] will cause it return immediately, and a
-        negative value will cause it to wait indefinitely. *)
+    then returns the tag given to it by [poll_add] and 0 if it has timed out.
+    passing in 0 for [~timeout] will cause it return immediately, and a
+    negative value will cause it to wait indefinitely. *)
 val wait : 'a t -> timeout:[ `Never | `Immediately | `After of Time_ns.Span.t ] -> unit
 
 val wait_timeout_after : 'a t -> Time_ns.Span.t -> unit
