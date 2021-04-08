@@ -160,4 +160,7 @@ external unsafe_clear_completions
   -> unit
   = "io_uring_clear_completions"
 
-let clear_completions t = t.completions <- 0
+let clear_completions t =
+  unsafe_clear_completions t.completion_buffer t.completions;
+  t.completions <- 0
+;;
