@@ -1,5 +1,6 @@
 open Core
 module File_descr = Unix.File_descr
+module Tag = Tag
 
 module Flags : sig
   (** An [Io_uring.Flags.t] is an immutable set of poll(2) flags for which one can
@@ -33,23 +34,6 @@ module Flags : sig
   val hup : t
 end
 
-(*
-module Kind : sig
-  type _ t = Poll : [ `Poll ] t
-end
-
-(* [User_data.t] contains information depending on the kind of I/O
- * submitted. To extract information, match on [User_data.kind] and call
- * the relevant functions as needed. *)
-module User_data : sig
-  type 'a t
-
-  val kind : 'a t -> 'a Kind.t
-  val file_descr : [ `Poll ] t -> File_descr.t
-  val flags : [ `Poll ] t -> Flags.t
-end
- *)
-
 type 'a t
 
 val create : max_submission_entries:int -> max_completion_entries:int -> _ t
@@ -57,12 +41,12 @@ val close : 'a t -> unit
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
         and will take effect when [submit] is called. *)
-val poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> bool
+val poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> 'a Tag.Option.t
 
 (* TOIMPL: [poll_remove] currently doesn't work since we allocate a new location
  * with [create_user_data]. Possibly mitigate without allocating by returning
  * an pointer to the value packed in an int? *)
-val poll_remove : 'a t -> File_descr.t -> Flags.t -> 'a -> bool
+val poll_remove : 'a t -> 'a Tag.t -> bool
 val submit : 'a t -> int
 
 (* TOIMPL: fix doc *)
@@ -75,7 +59,4 @@ val wait : 'a t -> timeout:[ `Never | `Immediately | `After of Time_ns.Span.t ] 
 
 val wait_timeout_after : 'a t -> Time_ns.Span.t -> unit
 val iter_completions : 'a t -> f:(user_data:'a -> res:int -> flags:int -> unit) -> unit
-
-module Expert : sig
-  val clear_completions : 'a t -> unit
-end
+val clear_completions : 'a t -> unit

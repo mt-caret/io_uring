@@ -1,6 +1,7 @@
 open Core
 module File_descr = Unix.File_descr
 module Syscall_result = Unix.Syscall_result
+module Tag = Tag
 
 [%%import "config.h"]
 
@@ -28,39 +29,6 @@ module Flags = struct
   end)
 end
 
-(*
-module Kind = struct
-  type _ t = Poll : [ `Poll ] t
-end
-
-module User_data = struct
-  type 'a t = Int63.t [@@deriving sexp]
-
-  let of_int = Int63.of_int
-
-  (* TOIMPL: it seems like there should be a more sane way to do this... *)
-  let kind (type a) (t : a t) : a Kind.t = Obj.magic Kind.Poll
-
-  let file_descr t =
-    Int63.bit_and t (Int63.of_int 0xffff_ffff) |> Int63.to_int_exn |> File_descr.of_int
-  ;;
-
-  let flags t = Int63.shift_right t 32
-
-  module Pretty = struct
-    type t =
-      { file_descr : File_descr.t
-      ; flags : Flags.t
-      }
-    [@@deriving sexp_of]
-
-    let create t = { file_descr = file_descr t; flags = flags t }
-  end
-
-  let sexp_of_t _ t = Pretty.sexp_of_t (Pretty.create t)
-end
-*)
-
 (* TOIMPL: flesh out the interface here *)
 type _ io_uring
 
@@ -77,16 +45,10 @@ external poll_add
   -> File_descr.t
   -> Flags.t
   -> 'a
-  -> bool
+  -> 'a Tag.Option.t
   = "io_uring_prep_poll_add_stub"
 
-external poll_remove
-  :  'a io_uring
-  -> File_descr.t
-  -> Flags.t
-  -> 'a
-  -> bool
-  = "io_uring_prep_poll_remove_stub"
+external poll_remove : 'a io_uring -> 'a Tag.t -> bool = "io_uring_prep_poll_remove_stub"
 
 external unsafe_writev
   :  [> `Writev ] io_uring
@@ -144,18 +106,11 @@ let offsetof_user_data = io_uring_offsetof_user_data ()
 let offsetof_res = io_uring_offsetof_res ()
 let offsetof_flags = io_uring_offsetof_flags ()
 
-external io_uring_get_user_data : Bigstring.t -> int -> 'a = "io_uring_get_user_data"
-
-let cqe_user_data : type a. Bigstring.t -> int -> a =
- fun buf i ->
-  (*print_s [%message "cqe_uesr_data" (i : int)]; *)
-  io_uring_get_user_data buf i
-;;
-
-(*Bigstring.unsafe_get_int64_le_trunc
-    buf
-    ~pos:((i * sizeof_io_uring_cqe) + offsetof_user_data)
-  |> Obj.magic*)
+(* we need to resort to a FFI call instead of using
+ * [Bigstring.unsafe_get_uint64_le_exn] along with [Obj.magic], for example,
+ * since the result will then be returned as an int value and be shifted left
+ * by 1 bit *)
+external unsafe_get_user_data : Bigstring.t -> int -> 'a = "io_uring_get_user_data"
 
 let cqe_res buf i =
   Bigstring.unsafe_get_int32_le buf ~pos:((i * sizeof_io_uring_cqe) + offsetof_res)
@@ -168,7 +123,6 @@ let cqe_flags buf i =
 let create ~max_submission_entries ~max_completion_entries =
   { io_uring = create ~max_submission_entries ~max_completion_entries
   ; completion_buffer =
-      (* Bigstring.create (sizeof_io_uring_cqe * Int32.to_int_exn max_completion_entries) *)
       Bigstring.init (sizeof_io_uring_cqe * max_completion_entries) (Fn.const 'A')
   ; completions = 0
   }
@@ -193,13 +147,17 @@ let wait t ~timeout = t.completions <- wait t.io_uring t.completion_buffer timeo
 let iter_completions t ~f =
   (* print_s [%message "iter_completions" (t.completions : int)]; *)
   for i = 0 to t.completions - 1 do
-    let user_data = cqe_user_data t.completion_buffer i in
+    let user_data = unsafe_get_user_data t.completion_buffer i in
     let res = cqe_res t.completion_buffer i in
     let flags = cqe_flags t.completion_buffer i in
     f ~user_data ~res ~flags
   done
 ;;
 
-module Expert = struct
-  let clear_completions t = t.completions <- 0
-end
+external unsafe_clear_completions
+  :  Bigstring.t
+  -> int
+  -> unit
+  = "io_uring_clear_completions"
+
+let clear_completions t = t.completions <- 0
