@@ -87,6 +87,7 @@ CAMLprim value io_uring_queue_exit_stub(value v_io_uring)
   CAMLparam1(v_io_uring);
 
   io_uring_queue_exit(Io_uring_val(v_io_uring));
+  caml_stat_free(Io_uring_val(v_io_uring));
 
   CAMLreturn(Val_unit);
 }
@@ -109,6 +110,19 @@ void *create_user_data(value v_a) {
   caml_register_generational_global_root(v_a_p);
   // debug: printf("create_user_data: %llx, %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
   return (void *) v_a_p;
+}
+
+CAMLprim value io_uring_prep_nop_stub(value v_io_uring, value v_a)
+{
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_none_user_data;
+  } else {
+    void *v_a_p = create_user_data(v_a);
+    io_uring_prep_nop(sqe);
+    io_uring_sqe_set_data(sqe, v_a_p);
+    return Val_some_user_data(v_a_p);
+  }
 }
 
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags, value v_a)
@@ -142,9 +156,9 @@ CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_a)
   }
 }
 
-CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_fd, value v_iovecs) {
-  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
-}
+//CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_fd, value v_iovecs) {
+//  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+//}
 
 CAMLprim value io_uring_submit_stub(value v_io_uring)
 {

@@ -39,6 +39,7 @@ external create
   = "io_uring_queue_init_stub"
 
 external close : _ io_uring -> unit = "io_uring_queue_exit_stub"
+external nop : 'a io_uring -> 'a -> 'a Tag.Option.t = "io_uring_prep_nop_stub"
 
 external poll_add
   :  'a io_uring
@@ -50,6 +51,7 @@ external poll_add
 
 external poll_remove : 'a io_uring -> 'a Tag.t -> bool = "io_uring_prep_poll_remove_stub"
 
+(*
 external unsafe_writev
   :  [> `Writev ] io_uring
   -> File_descr.t
@@ -62,6 +64,7 @@ let writev t fd iovecs =
   let count = Array.length iovecs in
   unsafe_writev t fd iovecs count
 ;;
+*)
 
 external submit : _ io_uring -> Int63.t = "io_uring_submit_stub"
 
@@ -129,9 +132,11 @@ let create ~max_submission_entries ~max_completion_entries =
 ;;
 
 let close t = close t.io_uring
+let nop t = nop t.io_uring
 let poll_add t = poll_add t.io_uring
 let poll_remove t = poll_remove t.io_uring
-let writev t = writev t.io_uring
+
+(*let writev t = writev t.io_uring*)
 
 (* TOIMPL: add invariant that num_in_flight is always >= 0? *)
 let submit t = submit t.io_uring |> Int63.to_int_exn

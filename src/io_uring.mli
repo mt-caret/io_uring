@@ -38,6 +38,7 @@ type 'a t
 
 val create : max_submission_entries:int -> max_completion_entries:int -> _ t
 val close : 'a t -> unit
+val nop : 'a t -> 'a -> 'a Tag.Option.t
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
     and will take effect when [submit] is called. It returns an
