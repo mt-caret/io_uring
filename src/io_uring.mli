@@ -40,7 +40,9 @@ val create : max_submission_entries:int -> max_completion_entries:int -> _ t
 val close : 'a t -> unit
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
-        and will take effect when [submit] is called. *)
+    and will take effect when [submit] is called. It returns an
+    ['a Tag.Option.t] which is empty when the underlying submission queue is
+    full and submission fails *)
 val poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> 'a Tag.Option.t
 
 val poll_remove : 'a t -> 'a Tag.t -> bool
