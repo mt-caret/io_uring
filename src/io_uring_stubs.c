@@ -12,8 +12,6 @@
 #endif
 #include <arpa/inet.h>
 #include <assert.h>
-//#include <limits.h>
-//#include <linux/limits.h> /* needed to build with musl */
 
 // TOIMPL: move this to jst-config?
 #include <liburing.h>
@@ -64,7 +62,6 @@ CAMLprim value io_uring_queue_init_stub(value v_submission_entries, value v_comp
   struct io_uring_params p;
   CAMLparam2(v_submission_entries, v_completion_entries);
   CAMLlocal1(v_io_uring);
-  // puts("entered io_uring_prep_queue_init");
 
   memset(&p, 0, sizeof(p));
   p.flags = IORING_SETUP_CQSIZE;
@@ -88,7 +85,6 @@ CAMLprim value io_uring_queue_init_stub(value v_submission_entries, value v_comp
 CAMLprim value io_uring_queue_exit_stub(value v_io_uring)
 {
   CAMLparam1(v_io_uring);
-  // puts("entered io_uring_prep_queue_exit");
 
   io_uring_queue_exit(Io_uring_val(v_io_uring));
 
@@ -99,30 +95,29 @@ CAMLprim value io_uring_queue_exit_stub(value v_io_uring)
 #define Val_some_user_data(user_data) (Val_long((uintptr_t) user_data))
 #define User_data_val(v_user_data) ((void *) (uintptr_t) Unsigned_long_val(v_user_data))
 
-// user data will just be a pointer (outside of the OCaml heap), so can never
-// equal LIBURING_UDATA_TIMEOUT (i.e. 18446744073709551615), the value
+// user data will just be a pointer (outside of the OCaml heap) so can never
+// be LIBURING_UDATA_TIMEOUT (i.e. 18446744073709551615), the value
 // forbidden by liburing.
+//
+// it's tempting to keep v_a "unboxed" by not allocating when it is an
+// immediate value, but then it becomes an issue when the user passes the same
+// value multiple times to io_uring_prep_poll_add_stub and then tries to cancel
+// via io_uring_prep_poll_remove_stub.
 void *create_user_data(value v_a) {
   value *v_a_p = caml_stat_alloc(sizeof(value));
   *v_a_p = v_a;
   caml_register_generational_global_root(v_a_p);
-  // uncomment: printf("create_user_data: %llx, %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
+  // debug: printf("create_user_data: %llx, %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
   return (void *) v_a_p;
 }
 
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags, value v_a)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
-  // puts("entered io_uring_prep_poll_add");
   if (sqe == NULL) {
-    // puts("sqe == NULL");
     return Val_none_user_data;
   } else {
     void *v_a_p = create_user_data(v_a);
-    // puts("sqe != NULL");
-    //printf("fd = %d, flags = %d, raw_user_data = %ld, user_data = %ld\n",
-    //   (int) Long_val(v_fd), (short) Int63_val(v_flags), v_a, Int_val(v_a));
-
     io_uring_prep_poll_add(sqe,
                           (int) Long_val(v_fd),
                           (short) Int63_val(v_flags));
@@ -134,15 +129,13 @@ CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v
 CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_a)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
-  // uncomment: puts("entered io_uring_prep_poll_remove");
+  // debug: puts("entered io_uring_prep_poll_remove");
 
   if (sqe == NULL) {
     return Val_bool(false);
   } else {
-    // uncomment: printf("poll_remove: tag: %llx, %llx\n", v_a, User_data_val(v_a));
+    // debug: printf("poll_remove: tag: %llx, %llx\n", v_a, User_data_val(v_a));
     value *v_a_p = User_data_val(v_a);
-    //ud->refcount++;
-    //printf("poll_remove: root: %ld, refcount: %d\n", Int_val(ud->root), ud->refcount);
     io_uring_prep_poll_remove((struct io_uring_sqe *) Data_abstract_val(sqe), v_a_p);
     io_uring_sqe_set_data(sqe, NULL);
     return Val_bool(false);
@@ -215,30 +208,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
   while (cqe != NULL && num_seen < max_cqes) {
     memcpy(buffer, cqe, sizeof(struct io_uring_cqe));
 
-    // uncomment: puts("io_uring_wait: in loop");
-
-    value* v_a_p = (value *) buffer->user_data;
-    // uncomment: printf("io_uring_wait: %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
-
-
-    // buffer->user_data doesn't contain the value passed in, but rather a
-    // pointer to it which is located on the heap (so it doesn't become invalid
-    // while the kernel is processing the sqe) and registered as a global root
-    // (so what it points to is updated accordingly).
-    //printf("io_uring_wait: user_data: %ld, res: %d, flags: %d\n",cqe->user_data, cqe->res, cqe->flags);
-    //user_data *ud = (user_data *) buffer->user_data;
-    //value* v_a_p = buffer->user_data;
-    //if (ud != NULL) {
-    //  buffer->user_data = ud->root;
-    //  ud->refcount--;
-    //  if (ud->refcount == 0) {
-    //    printf("freeing: root: %ld, refcount: %d\n", Int_val(ud->root), ud->refcount);
-
-    //    // TOIMPL: race here (i.e. what happens when data is moved after this point?)
-    //    caml_remove_generational_global_root(&(ud->root));
-    //    caml_stat_free(ud);
-    //  }
-    //}
+    // debug: puts("io_uring_wait: in loop");
 
     io_uring_cqe_seen(Io_uring_val(v_io_uring), cqe);
 
@@ -251,15 +221,11 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     }
 
     // skip results from io_uring_prep_poll_remove
-    if (v_a_p != NULL) {
+    if ((void *) buffer->user_data != NULL) {
       num_seen++;
       buffer++;
     }
   }
-
-  // if (num_seen) {
-  //   printf("num_seen: %d\n", num_seen);
-  // }
 
   CAMLreturn(Val_int(num_seen));
 }
@@ -267,12 +233,15 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 #define Index_user_data(bs, i) (((struct io_uring_cqe *) Caml_ba_data_val(bs) + i)->user_data)
 
 CAMLprim value io_uring_get_user_data(value v_array, value v_index) {
-  //return ((struct io_uring_cqe *) Caml_ba_data_val(v_array) + Int_val(v_index))->user_data;
   value *v_a_p = (value *) Index_user_data(v_array, Int_val(v_index));
-  // uncomment: printf("io_uring_get_user_data: %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
+  // debug: printf("io_uring_get_user_data: %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
   return *v_a_p;
 }
 
+// cqe->user_data doesn't contain OCaml values which are passed in, but rather
+// a pointer to it which is located on the heap (so it doesn't become invalid
+// while the kernel is processing the sqe) and registered as a global root (so
+// what it points to is updated accordingly).
 CAMLprim value io_uring_clear_completions(value v_array, value v_n) {
   int n = Int_val(v_n);
   for (int i = 0; i < n; i++) {
