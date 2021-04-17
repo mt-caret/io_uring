@@ -41,6 +41,26 @@ external create
 external close : _ io_uring -> unit = "io_uring_queue_exit_stub"
 external nop : 'a io_uring -> 'a -> 'a Tag.Option.t = "io_uring_prep_nop_stub"
 
+external write
+  :  'a io_uring
+  -> File_descr.t
+  -> pos:int
+  -> len:int
+  -> Bigstring.t
+  -> 'a
+  -> 'a Tag.Option.t
+  = "io_uring_prep_write_bytecode_stub" "io_uring_prep_write_stub"
+
+external read
+  :  'a io_uring
+  -> File_descr.t
+  -> pos:int
+  -> len:int
+  -> Bigstring.t
+  -> 'a
+  -> 'a Tag.Option.t
+  = "io_uring_prep_read_bytecode_stub" "io_uring_prep_read_stub"
+
 external poll_add
   :  'a io_uring
   -> File_descr.t
@@ -50,22 +70,6 @@ external poll_add
   = "io_uring_prep_poll_add_stub"
 
 external poll_remove : 'a io_uring -> 'a Tag.t -> bool = "io_uring_prep_poll_remove_stub"
-
-(*
-external unsafe_writev
-  :  [> `Writev ] io_uring
-  -> File_descr.t
-  -> Bigstring.t Unix.IOVec.t array
-  -> int
-  -> bool
-  = "io_uring_prep_writev_stub"
-
-let writev t fd iovecs =
-  let count = Array.length iovecs in
-  unsafe_writev t fd iovecs count
-;;
-*)
-
 external submit : _ io_uring -> Int63.t = "io_uring_submit_stub"
 
 external wait_internal
@@ -133,6 +137,19 @@ let create ~max_submission_entries ~max_completion_entries =
 
 let close t = close t.io_uring
 let nop t = nop t.io_uring
+
+let write t fd ?(pos = 0) ?len bstr a =
+  let len = Bigstring.get_opt_len bstr ~pos len in
+  Bigstring.check_args ~loc:"io_uring.write" ~pos ~len bstr;
+  write t.io_uring fd ~pos ~len bstr a
+;;
+
+let read t fd ?(pos = 0) ?len bstr a =
+  let len = Bigstring.get_opt_len bstr ~pos len in
+  Bigstring.check_args ~loc:"io_uring.read" ~pos ~len bstr;
+  read t.io_uring fd ~pos ~len bstr a
+;;
+
 let poll_add t = poll_add t.io_uring
 let poll_remove t = poll_remove t.io_uring
 

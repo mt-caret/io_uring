@@ -125,6 +125,48 @@ CAMLprim value io_uring_prep_nop_stub(value v_io_uring, value v_a)
   }
 }
 
+CAMLprim value io_uring_prep_write_stub(value v_io_uring, value v_fd, value v_pos, value v_len, value v_bstr, value v_a)
+{
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_none_user_data;
+  } else {
+    void *v_a_p = create_user_data(v_a);
+    io_uring_prep_write(sqe,
+                        (int) Long_val(v_fd),
+                        Caml_ba_data_val(v_bstr),
+                        (unsigned) Long_val(v_len),
+                        (off_t) Long_val(v_pos));
+    io_uring_sqe_set_data(sqe, v_a_p);
+    return Val_some_user_data(v_a_p);
+  }
+}
+
+CAMLprim value io_uring_prep_write_bytecode_stub(value *argv, int argn) {
+  return io_uring_prep_write_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+}
+
+CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_fd, value v_pos, value v_len, value v_bstr, value v_a)
+{
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_none_user_data;
+  } else {
+    void *v_a_p = create_user_data(v_a);
+    io_uring_prep_read(sqe,
+                        (int) Long_val(v_fd),
+                        Caml_ba_data_val(v_bstr),
+                        (unsigned) Long_val(v_len),
+                        (off_t) Long_val(v_pos));
+    io_uring_sqe_set_data(sqe, v_a_p);
+    return Val_some_user_data(v_a_p);
+  }
+}
+
+CAMLprim value io_uring_prep_read_bytecode_stub(value *argv, int argn) {
+  return io_uring_prep_read_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+}
+
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags, value v_a)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
