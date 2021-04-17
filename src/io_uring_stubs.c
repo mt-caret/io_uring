@@ -226,17 +226,11 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     /* returns immediately, skip enter()/leave() pair */
     retcode = io_uring_peek_cqe(io_uring, &cqe);
 
-    if (retcode == -EAGAIN) {
-      CAMLreturn(Val_int(0));
-    }
-
-    // TOIMPL: under heavy load, we sometimes seem to get ETIME; should investigate
-    //
-    //if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
-    if (retcode < 0) {
+    // TOIMPL: not sure why we get ETIMEs here
+    if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
       printf("error %d (%s)\n", -retcode, strerror(-retcode));
       printf("cqe ptr: %lu\n", (uint64_t) cqe);
-      uerror("io_uring_peek_cqe", Nothing);
+      uerror("io_uring_peek_cqe (if branch)", Nothing);
     }
   } else if (timeout < 0) {
 
@@ -255,8 +249,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     retcode = io_uring_wait_cqe_timeout(io_uring, &cqe, &ts);
     caml_leave_blocking_section();
 
-    //if (retcode != -ETIME && retcode < 0) {
-    if (retcode < 0) {
+    if (retcode != -ETIME && retcode < 0) {
       printf("error %d (%s)\n", -retcode, strerror(-retcode));
       printf("cqe ptr: %lu\n", (uint64_t) cqe);
       uerror("io_uring_wait_cqe_timeout", Nothing);
@@ -267,7 +260,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
   int num_seen = 0;
   int max_cqes = Caml_ba_array_val(v_array)->dim[0] / sizeof(struct io_uring_cqe);
 
-  while (cqe != NULL && num_seen < max_cqes) {
+  while (cqe != NULL && num_seen < max_cqes && retcode != -EAGAIN && retcode != -ETIME) {
     memcpy(buffer, cqe, sizeof(struct io_uring_cqe));
 
     // debug: puts("io_uring_wait: in loop");
@@ -276,21 +269,16 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 
     retcode = io_uring_peek_cqe(Io_uring_val(v_io_uring), &cqe);
 
-    //if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
-    if (retcode != -EAGAIN && retcode < 0) {
+    if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
       printf("error %d (%s)\n", -retcode, strerror(-retcode));
       printf("cqe ptr: %lu\n", (uint64_t) cqe);
-      uerror("io_uring_peek_cqe", Nothing);
+      uerror("io_uring_peek_cqe (loop)", Nothing);
     }
 
     // skip results from io_uring_prep_poll_remove
     if ((void *) buffer->user_data != NULL) {
       num_seen++;
       buffer++;
-    }
-
-    if (retcode == -EAGAIN) {
-      break;
     }
   }
 
@@ -300,9 +288,8 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 #define Index_user_data(bs, i) (((struct io_uring_cqe *) Caml_ba_data_val(bs) + i)->user_data)
 
 CAMLprim value io_uring_get_user_data(value v_array, value v_index) {
-  value *v_a_p = (value *) Index_user_data(v_array, Int_val(v_index));
   // debug: printf("io_uring_get_user_data: %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
-  return *v_a_p;
+  return *(value *) Index_user_data(v_array, Int_val(v_index));
 }
 
 // cqe->user_data doesn't contain OCaml values which are passed in, but rather

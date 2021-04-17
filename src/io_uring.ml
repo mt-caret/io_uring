@@ -72,7 +72,7 @@ external poll_add
   = "io_uring_prep_poll_add_stub"
 
 external poll_remove : 'a io_uring -> 'a Tag.t -> bool = "io_uring_prep_poll_remove_stub"
-external submit : _ io_uring -> Int63.t = "io_uring_submit_stub"
+external submit : _ io_uring -> int = "io_uring_submit_stub"
 
 external wait_internal
   :  _ io_uring
@@ -158,7 +158,7 @@ let poll_remove t = poll_remove t.io_uring
 (*let writev t = writev t.io_uring*)
 
 (* TOIMPL: add invariant that num_in_flight is always >= 0? *)
-let submit t = submit t.io_uring |> Int63.to_int_exn
+let submit t = submit t.io_uring
 
 (* submit is automatcally called here, so I don't think it's possible to
  * accurately keep track of in-flight requests if we use liburing *)
