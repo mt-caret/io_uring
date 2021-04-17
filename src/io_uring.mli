@@ -47,8 +47,9 @@ val write
   -> ?pos:int
   -> ?len:int
   -> Bigstring.t
+  -> offset:int
   -> 'a
-  -> 'a Tag.Option.t
+  -> bool
 
 (* TOIMPL: test *)
 val read
@@ -57,8 +58,9 @@ val read
   -> ?pos:int
   -> ?len:int
   -> Bigstring.t
+  -> offset:int
   -> 'a
-  -> 'a Tag.Option.t
+  -> bool
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
     and will take effect when [submit] is called. It returns an
@@ -80,3 +82,4 @@ val wait : 'a t -> timeout:[ `Never | `Immediately | `After of Time_ns.Span.t ] 
 val wait_timeout_after : 'a t -> Time_ns.Span.t -> unit
 val iter_completions : 'a t -> f:(user_data:'a -> res:int -> flags:int -> unit) -> unit
 val clear_completions : 'a t -> unit
+val num_completions : 'a t -> int

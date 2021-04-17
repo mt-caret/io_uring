@@ -4,20 +4,8 @@
   (libraries core io_uring)
   (preprocess (pps ppx_jane)))
 
-;(executables
-;  (names echo_server_async)
-;  (modules echo_server_async)
-;  (libraries core async)
-;  (preprocess (pps ppx_jane)))
-;
-;(executables
-;  (names async_tcp_server)
-;  (modules async_tcp_server)
-;  (libraries core async)
-;  (preprocess (pps ppx_jane)))
-;
-;(executables
-;  (names bench_scheduler_loop)
-;  (modules bench_scheduler_loop)
-;  (libraries core async memtrace)
-;  (preprocess (pps ppx_jane)))
+(executables
+  (names cp)
+  (modules cp)
+  (libraries core io_uring)
+  (preprocess (pps ppx_jane)))

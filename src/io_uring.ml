@@ -47,8 +47,9 @@ external write
   -> pos:int
   -> len:int
   -> Bigstring.t
+  -> offset:int
   -> 'a
-  -> 'a Tag.Option.t
+  -> bool
   = "io_uring_prep_write_bytecode_stub" "io_uring_prep_write_stub"
 
 external read
@@ -57,8 +58,9 @@ external read
   -> pos:int
   -> len:int
   -> Bigstring.t
+  -> offset:int
   -> 'a
-  -> 'a Tag.Option.t
+  -> bool
   = "io_uring_prep_read_bytecode_stub" "io_uring_prep_read_stub"
 
 external poll_add
@@ -138,16 +140,16 @@ let create ~max_submission_entries ~max_completion_entries =
 let close t = close t.io_uring
 let nop t = nop t.io_uring
 
-let write t fd ?(pos = 0) ?len bstr a =
+let write t fd ?(pos = 0) ?len bstr ~offset a =
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.write" ~pos ~len bstr;
-  write t.io_uring fd ~pos ~len bstr a
+  write t.io_uring fd ~pos ~len bstr ~offset a
 ;;
 
-let read t fd ?(pos = 0) ?len bstr a =
+let read t fd ?(pos = 0) ?len bstr ~offset a =
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.read" ~pos ~len bstr;
-  read t.io_uring fd ~pos ~len bstr a
+  read t.io_uring fd ~pos ~len bstr ~offset a
 ;;
 
 let poll_add t = poll_add t.io_uring
@@ -186,3 +188,5 @@ let clear_completions t =
   unsafe_clear_completions t.completion_buffer t.completions;
   t.completions <- 0
 ;;
+
+let num_completions t = t.completions

@@ -125,46 +125,46 @@ CAMLprim value io_uring_prep_nop_stub(value v_io_uring, value v_a)
   }
 }
 
-CAMLprim value io_uring_prep_write_stub(value v_io_uring, value v_fd, value v_pos, value v_len, value v_bstr, value v_a)
+CAMLprim value io_uring_prep_write_stub(value v_io_uring, value v_fd, value v_pos, value v_len, value v_bstr, value v_offset, value v_a)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   if (sqe == NULL) {
-    return Val_none_user_data;
+    return Val_bool(true);
   } else {
     void *v_a_p = create_user_data(v_a);
     io_uring_prep_write(sqe,
                         (int) Long_val(v_fd),
-                        Caml_ba_data_val(v_bstr),
+                        get_bstr(v_bstr, v_pos),
                         (unsigned) Long_val(v_len),
-                        (off_t) Long_val(v_pos));
+                        (off_t) Long_val(v_offset));
     io_uring_sqe_set_data(sqe, v_a_p);
-    return Val_some_user_data(v_a_p);
+    return Val_bool(false);
   }
 }
 
 CAMLprim value io_uring_prep_write_bytecode_stub(value *argv, int argn) {
-  return io_uring_prep_write_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+  return io_uring_prep_write_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 }
 
-CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_fd, value v_pos, value v_len, value v_bstr, value v_a)
+CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_fd, value v_pos, value v_len, value v_bstr, value v_offset, value v_a)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   if (sqe == NULL) {
-    return Val_none_user_data;
+    return Val_bool(true);
   } else {
     void *v_a_p = create_user_data(v_a);
     io_uring_prep_read(sqe,
                         (int) Long_val(v_fd),
-                        Caml_ba_data_val(v_bstr),
+                        get_bstr(v_bstr, v_pos),
                         (unsigned) Long_val(v_len),
-                        (off_t) Long_val(v_pos));
+                        (off_t) Long_val(v_offset));
     io_uring_sqe_set_data(sqe, v_a_p);
-    return Val_some_user_data(v_a_p);
+    return Val_bool(false);
   }
 }
 
 CAMLprim value io_uring_prep_read_bytecode_stub(value *argv, int argn) {
-  return io_uring_prep_read_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+  return io_uring_prep_read_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 }
 
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags, value v_a)
@@ -188,7 +188,7 @@ CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_a)
   // debug: puts("entered io_uring_prep_poll_remove");
 
   if (sqe == NULL) {
-    return Val_bool(false);
+    return Val_bool(true);
   } else {
     // debug: printf("poll_remove: tag: %llx, %llx\n", v_a, User_data_val(v_a));
     value *v_a_p = User_data_val(v_a);
@@ -226,9 +226,14 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     /* returns immediately, skip enter()/leave() pair */
     retcode = io_uring_peek_cqe(io_uring, &cqe);
 
+    if (retcode == -EAGAIN) {
+      CAMLreturn(Val_int(0));
+    }
+
     // TOIMPL: under heavy load, we sometimes seem to get ETIME; should investigate
     //
-    if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
+    //if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
+    if (retcode < 0) {
       printf("error %d (%s)\n", -retcode, strerror(-retcode));
       printf("cqe ptr: %lu\n", (uint64_t) cqe);
       uerror("io_uring_peek_cqe", Nothing);
@@ -250,7 +255,8 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     retcode = io_uring_wait_cqe_timeout(io_uring, &cqe, &ts);
     caml_leave_blocking_section();
 
-    if (retcode != -ETIME && retcode < 0) {
+    //if (retcode != -ETIME && retcode < 0) {
+    if (retcode < 0) {
       printf("error %d (%s)\n", -retcode, strerror(-retcode));
       printf("cqe ptr: %lu\n", (uint64_t) cqe);
       uerror("io_uring_wait_cqe_timeout", Nothing);
@@ -270,7 +276,8 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 
     retcode = io_uring_peek_cqe(Io_uring_val(v_io_uring), &cqe);
 
-    if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
+    //if (retcode != -EAGAIN && retcode != -ETIME && retcode < 0) {
+    if (retcode != -EAGAIN && retcode < 0) {
       printf("error %d (%s)\n", -retcode, strerror(-retcode));
       printf("cqe ptr: %lu\n", (uint64_t) cqe);
       uerror("io_uring_peek_cqe", Nothing);
@@ -280,6 +287,10 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     if ((void *) buffer->user_data != NULL) {
       num_seen++;
       buffer++;
+    }
+
+    if (retcode == -EAGAIN) {
+      break;
     }
   }
 
