@@ -104,7 +104,8 @@ CAMLprim value io_uring_queue_exit_stub(value v_io_uring)
 // immediate value, but then it becomes an issue when the user passes the same
 // value multiple times to io_uring_prep_poll_add_stub and then tries to cancel
 // via io_uring_prep_poll_remove_stub.
-void *create_user_data(value v_a) {
+void *create_user_data(value v_a)
+{
   value *v_a_p = caml_stat_alloc(sizeof(value));
   *v_a_p = v_a;
   caml_register_generational_global_root(v_a_p);
@@ -142,7 +143,8 @@ CAMLprim value io_uring_prep_write_stub(value v_io_uring, value v_fd, value v_po
   }
 }
 
-CAMLprim value io_uring_prep_write_bytecode_stub(value *argv, int argn) {
+CAMLprim value io_uring_prep_write_bytecode_stub(value *argv, int argn)
+{
   return io_uring_prep_write_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 }
 
@@ -163,7 +165,8 @@ CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_fd, value v_pos
   }
 }
 
-CAMLprim value io_uring_prep_read_bytecode_stub(value *argv, int argn) {
+CAMLprim value io_uring_prep_read_bytecode_stub(value *argv, int argn)
+{
   return io_uring_prep_read_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 }
 
@@ -197,10 +200,6 @@ CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_a)
     return Val_bool(false);
   }
 }
-
-//CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_fd, value v_iovecs) {
-//  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
-//}
 
 CAMLprim value io_uring_submit_stub(value v_io_uring)
 {
@@ -287,7 +286,8 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 
 #define Index_user_data(bs, i) (((struct io_uring_cqe *) Caml_ba_data_val(bs) + i)->user_data)
 
-CAMLprim value io_uring_get_user_data(value v_array, value v_index) {
+CAMLprim value io_uring_get_user_data(value v_array, value v_index)
+{
   // debug: printf("io_uring_get_user_data: %llx, %llx\n", Val_some_user_data(v_a_p), v_a_p);
   return *(value *) Index_user_data(v_array, Int_val(v_index));
 }
@@ -296,7 +296,8 @@ CAMLprim value io_uring_get_user_data(value v_array, value v_index) {
 // a pointer to it which is located on the heap (so it doesn't become invalid
 // while the kernel is processing the sqe) and registered as a global root (so
 // what it points to is updated accordingly).
-CAMLprim value io_uring_clear_completions(value v_array, value v_n) {
+CAMLprim value io_uring_clear_completions(value v_array, value v_n)
+{
   int n = Int_val(v_n);
   for (int i = 0; i < n; i++) {
     value *v_a_p = (value *) Index_user_data(v_array, i);
