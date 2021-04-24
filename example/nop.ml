@@ -14,9 +14,8 @@ let () =
        in
        let start = Time_ns.now () in
        for i = 1 to max_submission_entries do
-         match%optional.Io_uring.Tag.Option Io_uring.nop io_uring 0 with
-         | None -> failwith "submission queue is full"
-         | Some _tag -> ()
+         let sq_full = Io_uring.nop io_uring 0 in
+         if sq_full then failwith "submission queue is full"
        done;
        let n_submitted = Io_uring.submit io_uring in
        Io_uring.wait io_uring ~timeout:`Never;

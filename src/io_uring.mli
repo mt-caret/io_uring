@@ -1,6 +1,20 @@
 open Core
 module File_descr = Unix.File_descr
-module Tag = Tag
+
+module Tag : sig
+  type 'a t [@@deriving sexp]
+
+  module Option : sig
+    type 'a value = 'a t
+    type 'a t
+
+    val is_none : 'a t -> bool
+    val to_option : 'a t -> 'a value option
+
+    module Optional_syntax :
+      Optional_syntax_intf.S1 with type 'a t := 'a t with type 'a value = 'a value
+  end
+end
 
 module Flags : sig
   (** An [Io_uring.Flags.t] is an immutable set of poll(2) flags for which one can
@@ -38,7 +52,7 @@ type 'a t
 
 val create : max_submission_entries:int -> max_completion_entries:int -> _ t
 val close : 'a t -> unit
-val nop : 'a t -> 'a -> 'a Tag.Option.t
+val nop : 'a t -> 'a -> bool
 
 (* TOIMPL: test *)
 val write
