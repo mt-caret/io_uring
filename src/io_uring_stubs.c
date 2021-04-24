@@ -100,7 +100,7 @@ CAMLprim value io_uring_prep_nop_stub(value v_io_uring, value v_user_data)
   } else {
     io_uring_prep_nop(sqe);
     // debug: printf("user_data: %d\n", v_user_data);
-    io_uring_sqe_set_data(sqe, v_user_data);
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
   }
 }
@@ -117,7 +117,7 @@ CAMLprim value io_uring_prep_write_stub(value v_io_uring, value v_fd, value v_po
                         (unsigned) Long_val(v_len),
                         (off_t) Long_val(v_offset));
     // debug: printf("user_data: %d\n", v_user_data);
-    io_uring_sqe_set_data(sqe, v_user_data);
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
   }
 }
@@ -139,7 +139,7 @@ CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_fd, value v_pos
                         (unsigned) Long_val(v_len),
                         (off_t) Long_val(v_offset));
     // debug: printf("user_data: %d\n", v_user_data);
-    io_uring_sqe_set_data(sqe, v_user_data);
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
   }
 }
@@ -159,7 +159,7 @@ CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v
                           (int) Long_val(v_fd),
                           (short) Int63_val(v_flags));
     // debug: printf("user_data: %d\n", v_user_data);
-    io_uring_sqe_set_data(sqe, v_user_data);
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
   }
 }
@@ -173,7 +173,8 @@ CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_user_dat
     return Val_bool(true);
   } else {
     // debug: printf("poll_remove: tag: %llx, %llx\n", v_a, User_data_val(v_a));
-    io_uring_prep_poll_remove((struct io_uring_sqe *) Data_abstract_val(sqe), v_user_data);
+    io_uring_prep_poll_remove((struct io_uring_sqe *) Data_abstract_val(sqe),
+                              (void *)(uintptr_t) v_user_data);
     io_uring_sqe_set_data(sqe, NULL);
     return Val_bool(false);
   }
