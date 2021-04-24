@@ -64,7 +64,7 @@ external create
   = "io_uring_queue_init_stub"
 
 external close : _ io_uring -> unit = "io_uring_queue_exit_stub"
-external nop : 'a io_uring -> user_data:int -> bool = "io_uring_prep_nop_stub"
+external nop : 'a io_uring -> user_data:int -> bool = "io_uring_prep_nop_stub" [@@noalloc]
 
 external write
   :  'a io_uring
@@ -76,6 +76,7 @@ external write
   -> user_data:int
   -> bool
   = "io_uring_prep_write_bytecode_stub" "io_uring_prep_write_stub"
+  [@@noalloc]
 
 external read
   :  'a io_uring
@@ -87,6 +88,7 @@ external read
   -> user_data:int
   -> bool
   = "io_uring_prep_read_bytecode_stub" "io_uring_prep_read_stub"
+  [@@noalloc]
 
 external poll_add
   :  'a io_uring
@@ -95,14 +97,16 @@ external poll_add
   -> user_data:int
   -> bool
   = "io_uring_prep_poll_add_stub"
+  [@@noalloc]
 
 external poll_remove
   :  'a io_uring
   -> user_data:int
   -> bool
   = "io_uring_prep_poll_remove_stub"
+  [@@noalloc]
 
-external submit : _ io_uring -> int = "io_uring_submit_stub"
+external submit : _ io_uring -> int = "io_uring_submit_stub" [@@noalloc]
 
 external wait_internal
   :  _ io_uring
