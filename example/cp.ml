@@ -29,13 +29,13 @@ module User_data = struct
   let to_string = Fn.compose Sexp.to_string [%sexp_of: t]
 
   let dispatch = function
-    | `Read -> Io_uring.readv
-    | `Write -> Io_uring.writev
+    | `Read -> Io_uring.prepare_readv
+    | `Write -> Io_uring.prepare_writev
   ;;
 
   let dispatch_non_v = function
-    | `Read -> Io_uring.read
-    | `Write -> Io_uring.write
+    | `Read -> Io_uring.prepare_read
+    | `Write -> Io_uring.prepare_write
   ;;
 
   (* the original implementation uses readv/writev, but we demonstrate use of

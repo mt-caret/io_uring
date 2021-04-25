@@ -216,6 +216,17 @@ CAMLprim value io_uring_prep_readv_bytecode_stub(value *argv, int argn) {
   return io_uring_prep_readv_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
 }
 
+CAMLprim value io_uring_prep_close_stub(value v_io_uring, value v_fd, value v_user_data) {
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_bool(true);
+  } else {
+    io_uring_prep_close(sqe, (int) Long_val(v_fd));
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
+    return Val_bool(false);
+  }
+}
+
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags, value v_user_data)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));

@@ -53,9 +53,9 @@ type 'a t
 
 val create : max_submission_entries:int -> max_completion_entries:int -> _ t
 val close : 'a t -> unit
-val nop : 'a t -> 'a -> bool
+val prepare_nop : 'a t -> 'a -> bool
 
-val write
+val prepare_write
   :  'a t
   -> File_descr.t
   -> ?pos:int
@@ -65,7 +65,7 @@ val write
   -> 'a
   -> bool
 
-val read
+val prepare_read
   :  'a t
   -> File_descr.t
   -> ?pos:int
@@ -75,7 +75,7 @@ val read
   -> 'a
   -> bool
 
-val write
+val prepare_write
   :  'a t
   -> File_descr.t
   -> ?pos:int
@@ -85,16 +85,32 @@ val write
   -> 'a
   -> bool
 
-val writev : 'a t -> File_descr.t -> Bigstring.t IOVec.t array -> offset:int -> 'a -> bool
-val readv : 'a t -> File_descr.t -> Bigstring.t IOVec.t array -> offset:int -> 'a -> bool
+val prepare_writev
+  :  'a t
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> offset:int
+  -> 'a
+  -> bool
+
+val prepare_readv
+  :  'a t
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> offset:int
+  -> 'a
+  -> bool
+
+(* TODO: test *)
+val prepare_close : 'a t -> File_descr.t -> 'a -> bool
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
     and will take effect when [submit] is called. It returns an
     ['a Tag.Option.t] which is empty when the underlying submission queue is
     full and submission fails *)
-val poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> 'a Tag.Option.t
+val prepare_poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> 'a Tag.Option.t
 
-val poll_remove : 'a t -> 'a Tag.t -> bool
+val prepare_poll_remove : 'a t -> 'a Tag.t -> bool
 val submit : 'a t -> int
 
 (* TOIMPL: fix doc *)

@@ -65,9 +65,11 @@ external create
   = "io_uring_queue_init_stub"
 
 external close : _ io_uring -> unit = "io_uring_queue_exit_stub"
-external nop : 'a io_uring -> user_data:int -> bool = "io_uring_prep_nop_stub" [@@noalloc]
 
-external write
+external prepare_nop : 'a io_uring -> user_data:int -> bool = "io_uring_prep_nop_stub"
+  [@@noalloc]
+
+external prepare_write
   :  'a io_uring
   -> File_descr.t
   -> pos:int
@@ -79,7 +81,7 @@ external write
   = "io_uring_prep_write_bytecode_stub" "io_uring_prep_write_stub"
   [@@noalloc]
 
-external read
+external prepare_read
   :  'a io_uring
   -> File_descr.t
   -> pos:int
@@ -91,7 +93,7 @@ external read
   = "io_uring_prep_read_bytecode_stub" "io_uring_prep_read_stub"
   [@@noalloc]
 
-external writev
+external prepare_writev
   :  'a io_uring
   -> File_descr.t
   -> Bigstring.t IOVec.t array
@@ -102,7 +104,7 @@ external writev
   = "io_uring_prep_writev_bytecode_stub" "io_uring_prep_writev_stub"
   [@@noalloc]
 
-external readv
+external prepare_readv
   :  'a io_uring
   -> File_descr.t
   -> Bigstring.t IOVec.t array
@@ -113,7 +115,15 @@ external readv
   = "io_uring_prep_readv_bytecode_stub" "io_uring_prep_readv_stub"
   [@@noalloc]
 
-external poll_add
+external prepare_close
+  :  'a io_uring
+  -> File_descr.t
+  -> user_data:int
+  -> bool
+  = "io_uring_prep_close_stub"
+  [@@noaloc]
+
+external prepare_poll_add
   :  'a io_uring
   -> File_descr.t
   -> Flags.t
@@ -122,7 +132,7 @@ external poll_add
   = "io_uring_prep_poll_add_stub"
   [@@noalloc]
 
-external poll_remove
+external prepare_poll_remove
   :  'a io_uring
   -> user_data:int
   -> bool
@@ -216,50 +226,63 @@ let create ~max_submission_entries ~max_completion_entries =
 ;;
 
 let close t = close t.io_uring
-let nop t a = are_slots_full t || nop t.io_uring ~user_data:t.head |> alloc_user_data t a
 
-let write t fd ?(pos = 0) ?len bstr ~offset a =
+let prepare_nop t a =
+  are_slots_full t || prepare_nop t.io_uring ~user_data:t.head |> alloc_user_data t a
+;;
+
+let prepare_write t fd ?(pos = 0) ?len bstr ~offset a =
   are_slots_full t
   ||
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.write" ~pos ~len bstr;
-  write t.io_uring fd ~pos ~len bstr ~offset ~user_data:t.head |> alloc_user_data t a
+  prepare_write t.io_uring fd ~pos ~len bstr ~offset ~user_data:t.head
+  |> alloc_user_data t a
 ;;
 
-let read t fd ?(pos = 0) ?len bstr ~offset a =
+let prepare_read t fd ?(pos = 0) ?len bstr ~offset a =
   are_slots_full t
   ||
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.read" ~pos ~len bstr;
-  read t.io_uring fd ~pos ~len bstr ~offset ~user_data:t.head |> alloc_user_data t a
+  prepare_read t.io_uring fd ~pos ~len bstr ~offset ~user_data:t.head
+  |> alloc_user_data t a
 ;;
 
-let writev t fd iovecs ~offset a =
+let prepare_writev t fd iovecs ~offset a =
   are_slots_full t
   ||
   let count = Array.length iovecs in
-  writev t.io_uring fd iovecs ~count ~offset ~user_data:t.head |> alloc_user_data t a
+  prepare_writev t.io_uring fd iovecs ~count ~offset ~user_data:t.head
+  |> alloc_user_data t a
 ;;
 
-let readv t fd iovecs ~offset a =
+let prepare_readv t fd iovecs ~offset a =
   are_slots_full t
   ||
   let count = Array.length iovecs in
-  readv t.io_uring fd iovecs ~count ~offset ~user_data:t.head |> alloc_user_data t a
+  prepare_readv t.io_uring fd iovecs ~count ~offset ~user_data:t.head
+  |> alloc_user_data t a
 ;;
 
-let poll_add t fd flags a =
+let prepare_close t fd a =
+  are_slots_full t || prepare_close t.io_uring fd ~user_data:t.head |> alloc_user_data t a
+;;
+
+let prepare_poll_add t fd flags a =
   if are_slots_full t
   then -1
   else (
     let index = t.head in
-    let sq_full = poll_add t.io_uring fd flags ~user_data:t.head |> alloc_user_data t a in
+    let sq_full =
+      prepare_poll_add t.io_uring fd flags ~user_data:t.head |> alloc_user_data t a
+    in
     if sq_full then -1 else index)
 ;;
 
-let poll_remove t tag = are_slots_full t || poll_remove t.io_uring ~user_data:tag
-
-(*let writev t = writev t.io_uring*)
+let prepare_poll_remove t tag =
+  are_slots_full t || prepare_poll_remove t.io_uring ~user_data:tag
+;;
 
 (* TOIMPL: add invariant that num_in_flight is always >= 0? *)
 let submit t = submit t.io_uring

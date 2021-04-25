@@ -4,7 +4,7 @@ much fast, very wip
 
 TODO
 
-- [ ] prepend function names with `prepare_` (to prevent name collisions when adding `io_uring_prep_close`)
+- [x] prepend function names with `prepare_` (to prevent name collisions when adding `io_uring_prep_close`)
 - [ ] port more examples from liburing
 - [x] add option to use writev/readv in cp example
 - [ ] add support for request linking (and add to cp example)
