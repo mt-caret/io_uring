@@ -1,6 +1,7 @@
 open Core
 
-(* a port of https://github.com/axboe/liburing/blob/master/examples/io_uring-cp.c *)
+(* a port of https://github.com/axboe/liburing/blob/master/examples/io_uring-cp.c
+ * and https://github.com/axboe/liburing/blob/master/examples/link-cp.c *)
 
 let get_file_size fd =
   let stats = Unix.fstat fd in
@@ -40,7 +41,7 @@ module User_data = struct
 
   (* the original implementation uses readv/writev, but we demonstrate use of
     * read/write here as well. *)
-  let prepare ?(use_non_v = false) t ~io_uring ~fd =
+  let prepare ?(use_non_v = false) t ~io_uring ~sqe_flags ~fd =
     let { kind; buf; pos; offset; len } = t in
     let sq_full =
       if use_non_v
@@ -48,7 +49,7 @@ module User_data = struct
         dispatch_non_v
           kind
           io_uring
-          Io_uring.Sqe_flags.none
+          sqe_flags
           fd
           ~pos
           ~len:(len - pos)
@@ -57,14 +58,7 @@ module User_data = struct
           t
       else (
         let iovec = Unix.IOVec.of_bigstring ~pos ~len:(len - pos) buf in
-        dispatch
-          kind
-          io_uring
-          Io_uring.Sqe_flags.none
-          fd
-          [| iovec |]
-          ~offset:(offset + pos)
-          t)
+        dispatch kind io_uring sqe_flags fd [| iovec |] ~offset:(offset + pos) t)
     in
     if sq_full then raise_s [%message "submission queue is full"]
   ;;
@@ -78,6 +72,7 @@ let submit io_uring =
 ;;
 
 let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
+  let sqe_flags = Io_uring.Sqe_flags.none in
   let offset = ref 0 in
   let bytes_to_issue_read = ref insize in
   let bytes_to_issue_write = ref insize in
@@ -91,7 +86,7 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
       let len = Int.min !bytes_to_issue_read batch_size in
       let buf = Bigstring.create len in
       User_data.create ~kind:`Read ~buf ~pos:0 ~offset:!offset ~len
-      |> User_data.prepare ~use_non_v ~io_uring ~fd:infd;
+      |> User_data.prepare ~use_non_v ~io_uring ~sqe_flags ~fd:infd;
       bytes_to_issue_read := !bytes_to_issue_read - len;
       offset := !offset + len;
       incr read_submissions;
@@ -114,12 +109,14 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
                 ~use_non_v
                 { user_data with pos = user_data.pos + res }
                 ~io_uring
+                ~sqe_flags
                 ~fd:infd
             else (
               User_data.prepare
                 ~use_non_v
                 { user_data with kind = `Write; pos = 0 }
                 ~io_uring
+                ~sqe_flags
                 ~fd:outfd;
               bytes_to_issue_write := !bytes_to_issue_write - user_data.len;
               decr read_submissions;
@@ -131,6 +128,7 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
                 ~use_non_v
                 { user_data with pos = user_data.pos + res }
                 ~io_uring
+                ~sqe_flags
                 ~fd:outfd
             else decr write_submissions);
       first_completion := false;
@@ -150,14 +148,99 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
         match user_data.kind with
         | `Read -> raise_s [%message "unexpected completion" (user_data : User_data.t)]
         | `Write ->
+          (* TODO: the original implementation doesn't check for partial writes
+           * here, not sure if on purpose or a bug on their part *)
           if res < user_data.len
           then
             User_data.prepare
               ~use_non_v
               { user_data with pos = user_data.pos + res }
               ~io_uring
+              ~sqe_flags
               ~fd:outfd
           else decr write_submissions);
+    Io_uring.clear_completions io_uring
+  done
+;;
+
+(* TODO: kind of flaky and sometimes seems to hang, investigate *)
+let copy_file_with_linking ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
+  let prepare_linked_read_write_pair ~buf ~offset ~len =
+    User_data.create ~kind:`Read ~buf ~pos:0 ~offset ~len
+    |> User_data.prepare
+         ~use_non_v
+         ~io_uring
+         ~sqe_flags:Io_uring.Sqe_flags.io_link
+         ~fd:infd;
+    User_data.create ~kind:`Write ~buf ~pos:0 ~offset ~len
+    |> User_data.prepare ~use_non_v ~io_uring ~sqe_flags:Io_uring.Sqe_flags.none ~fd:outfd
+  in
+  let offset = ref 0 in
+  let bytes_to_issue = ref insize in
+  let submissions = ref 0 in
+  let handle_submission ~user_data ~res ~flags =
+    if res = -125 (* ECANCELED *)
+    then (
+      if debug
+      then
+        print_s
+          [%message
+            "cancelled, re-submitting"
+              (Time_ns.now () : Time_ns.t)
+              (user_data : User_data.t)
+              (!submissions : int)
+              (!bytes_to_issue : int)];
+      let { User_data.buf; offset; len; kind = _ } = user_data in
+      prepare_linked_read_write_pair ~buf ~offset ~len;
+      submissions := !submissions + 2)
+    else if res < 0
+    then
+      Unix.unix_error
+        (-res)
+        "copy_file_with_linking"
+        [%string "%{user_data#User_data} (%{res#Int})"];
+    decr submissions
+  in
+  while !bytes_to_issue > 0 do
+    if debug
+    then
+      print_s
+        [%message
+          "in initial loop"
+            (Time_ns.now () : Time_ns.t)
+            (!submissions : int)
+            (!bytes_to_issue : int)];
+    let submitted = ref false in
+    while !bytes_to_issue > 0 && !submissions < queue_depth do
+      let len = Int.min !bytes_to_issue batch_size in
+      let buf = Bigstring.create len in
+      prepare_linked_read_write_pair ~buf ~offset:!offset ~len;
+      offset := !offset + len;
+      bytes_to_issue := !bytes_to_issue - len;
+      submissions := !submissions + 2;
+      submitted := true
+    done;
+    if !submitted then submit io_uring;
+    let depth = if !bytes_to_issue > 0 then queue_depth else 1 in
+    while !submissions >= depth do
+      Io_uring.wait io_uring ~timeout:`Immediately;
+      Io_uring.iter_completions io_uring ~f:handle_submission;
+      Io_uring.clear_completions io_uring
+    done
+  done;
+  (* TODO: the original implementation omits this part, not sure if on purpose
+   * or a bug on their part *)
+  while !submissions > 0 do
+    if debug
+    then
+      print_s
+        [%message
+          "in latter loop"
+            (Time_ns.now () : Time_ns.t)
+            (!submissions : int)
+            (!bytes_to_issue : int)];
+    Io_uring.wait io_uring ~timeout:`Never;
+    Io_uring.iter_completions io_uring ~f:handle_submission;
     Io_uring.clear_completions io_uring
   done
 ;;
@@ -170,7 +253,7 @@ let () =
      and debug = flag "debug" no_arg ~doc:"BOOL enable debug output"
      and use_non_v =
        flag "use-non-v" no_arg ~doc:"BOOL use read/write instead of readv/writev"
-     in
+     and with_linking = flag "with-linking" no_arg ~doc:"BOOL use io_uring io linking" in
      fun () ->
        let infd = Unix.openfile ~mode:Unix.[ O_RDONLY ] infile in
        let outfd =
@@ -185,7 +268,13 @@ let () =
          print_s
            [%message
              "" (infd : Unix.File_descr.t) (outfd : Unix.File_descr.t) (insize : int)];
-       copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v;
+       (if with_linking then copy_file_with_linking else copy_file)
+         ~io_uring
+         ~infd
+         ~outfd
+         ~insize
+         ~debug
+         ~use_non_v;
        Unix.close infd;
        Unix.close outfd;
        Io_uring.close io_uring
