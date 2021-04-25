@@ -1,6 +1,7 @@
 open Core
 module File_descr = Unix.File_descr
 module Syscall_result = Unix.Syscall_result
+module IOVec = Unix.IOVec
 
 module Tag = struct
   type 'a t = int [@@deriving sexp]
@@ -88,6 +89,28 @@ external read
   -> user_data:int
   -> bool
   = "io_uring_prep_read_bytecode_stub" "io_uring_prep_read_stub"
+  [@@noalloc]
+
+external writev
+  :  'a io_uring
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> count:int
+  -> offset:int
+  -> user_data:int
+  -> bool
+  = "io_uring_prep_writev_bytecode_stub" "io_uring_prep_writev_stub"
+  [@@noalloc]
+
+external readv
+  :  'a io_uring
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> count:int
+  -> offset:int
+  -> user_data:int
+  -> bool
+  = "io_uring_prep_readv_bytecode_stub" "io_uring_prep_readv_stub"
   [@@noalloc]
 
 external poll_add
@@ -209,6 +232,20 @@ let read t fd ?(pos = 0) ?len bstr ~offset a =
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.read" ~pos ~len bstr;
   read t.io_uring fd ~pos ~len bstr ~offset ~user_data:t.head |> alloc_user_data t a
+;;
+
+let writev t fd iovecs ~offset a =
+  are_slots_full t
+  ||
+  let count = Array.length iovecs in
+  writev t.io_uring fd iovecs ~count ~offset ~user_data:t.head |> alloc_user_data t a
+;;
+
+let readv t fd iovecs ~offset a =
+  are_slots_full t
+  ||
+  let count = Array.length iovecs in
+  readv t.io_uring fd iovecs ~count ~offset ~user_data:t.head |> alloc_user_data t a
 ;;
 
 let poll_add t fd flags a =

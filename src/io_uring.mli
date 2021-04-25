@@ -1,5 +1,6 @@
 open Core
 module File_descr = Unix.File_descr
+module IOVec = Unix.IOVec
 
 module Tag : sig
   type 'a t [@@deriving sexp]
@@ -54,7 +55,6 @@ val create : max_submission_entries:int -> max_completion_entries:int -> _ t
 val close : 'a t -> unit
 val nop : 'a t -> 'a -> bool
 
-(* TOIMPL: test *)
 val write
   :  'a t
   -> File_descr.t
@@ -65,7 +65,6 @@ val write
   -> 'a
   -> bool
 
-(* TOIMPL: test *)
 val read
   :  'a t
   -> File_descr.t
@@ -75,6 +74,19 @@ val read
   -> offset:int
   -> 'a
   -> bool
+
+val write
+  :  'a t
+  -> File_descr.t
+  -> ?pos:int
+  -> ?len:int
+  -> Bigstring.t
+  -> offset:int
+  -> 'a
+  -> bool
+
+val writev : 'a t -> File_descr.t -> Bigstring.t IOVec.t array -> offset:int -> 'a -> bool
+val readv : 'a t -> File_descr.t -> Bigstring.t IOVec.t array -> offset:int -> 'a -> bool
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
     and will take effect when [submit] is called. It returns an

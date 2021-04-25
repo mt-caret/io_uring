@@ -149,6 +149,77 @@ CAMLprim value io_uring_prep_read_bytecode_stub(value *argv, int argn)
   return io_uring_prep_read_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 }
 
+struct iovecs_and_immediate {
+  struct iovec *iovecs;
+  value immediate;
+};
+
+CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_fd, value v_iovecs, value v_count, value v_offset, value v_user_data)
+{
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_bool(true);
+  } else {
+    int count = Int_val(v_count);
+    size_t total_len = 0;
+
+    assert(Is_long(v_user_data));
+    struct iovecs_and_immediate* user_data =
+      caml_stat_alloc(sizeof(struct iovecs_and_immediate));
+    user_data->immediate = v_user_data;
+    user_data->iovecs = copy_iovecs(&total_len, v_iovecs, count);
+    assert(Is_block((intptr_t)(void *)user_data));
+
+    printf("write to fd: %d\n", Long_val(v_fd));
+
+    io_uring_prep_writev(sqe,
+                        (int) Long_val(v_fd),
+                        user_data->iovecs,
+                        count,
+                        (off_t) Long_val(v_offset));
+    // debug: printf("user_data: %d\n", v_user_data);
+    io_uring_sqe_set_data(sqe, (void *) user_data);
+    return Val_bool(false);
+  }
+}
+
+CAMLprim value io_uring_prep_writev_bytecode_stub(value *argv, int argn) {
+  return io_uring_prep_writev_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+}
+
+CAMLprim value io_uring_prep_readv_stub(value v_io_uring, value v_fd, value v_iovecs, value v_count, value v_offset, value v_user_data)
+{
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_bool(true);
+  } else {
+    int count = Int_val(v_count);
+    size_t total_len = 0;
+
+    assert(Is_long(v_user_data));
+    struct iovecs_and_immediate* user_data =
+      caml_stat_alloc(sizeof(struct iovecs_and_immediate));
+    user_data->immediate = v_user_data;
+    user_data->iovecs = copy_iovecs(&total_len, v_iovecs, count);
+    assert(Is_block((intptr_t)(void *)user_data));
+
+    printf("read from fd: %d\n", Long_val(v_fd));
+
+    io_uring_prep_readv(sqe,
+                        (int) Long_val(v_fd),
+                        user_data->iovecs,
+                        count,
+                        (off_t) Long_val(v_offset));
+    // debug: printf("user_data: %d\n", v_user_data);
+    io_uring_sqe_set_data(sqe, (void *) user_data);
+    return Val_bool(false);
+  }
+}
+
+CAMLprim value io_uring_prep_readv_bytecode_stub(value *argv, int argn) {
+  return io_uring_prep_readv_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+}
+
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_fd, value v_flags, value v_user_data)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
@@ -255,6 +326,15 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 
     // skip results from io_uring_prep_poll_remove
     if ((void *) buffer->user_data != NULL) {
+      if (Is_block(buffer->user_data)) {
+        struct iovecs_and_immediate *p =
+          (struct iovecs_and_immediate *) buffer->user_data;
+        buffer->user_data = p->immediate;
+        caml_stat_free(p->iovecs);
+        caml_stat_free(p);
+        assert(Is_long(buffer->user_data));
+      }
+
       num_seen++;
       buffer++;
     }

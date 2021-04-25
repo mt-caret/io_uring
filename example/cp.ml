@@ -7,9 +7,9 @@ let get_file_size fd =
   match stats.st_kind with
   | S_REG -> Int64.to_int_exn stats.st_size
   | kind ->
-    (* original implementation calls ioctl(fd, BLKGETSIZE64, &bytes) to get the
-     * size when S_BLK, but core and friends don't have a binding for ioctl so
-     * not implemented. *)
+    (* the original implementation calls ioctl(fd, BLKGETSIZE64, &bytes) to get
+     * the size when S_BLK, but core and friends don't have a binding for ioctl
+     * so not implemented. *)
     raise_s [%message "file kind not supported" (kind : Unix.file_kind)]
 ;;
 
@@ -35,19 +35,31 @@ module User_data = struct
   let to_string = Fn.compose Sexp.to_string [%sexp_of: t]
 end
 
-let read io_uring fd ~pos ~offset ~len =
+let read ?(use_non_v = false) io_uring fd ~pos ~offset ~len =
   let buf = Bigstring.create len in
   let sq_full =
+    (* the original implementation uses readv/writev, but we demonstrate use of
+     * read/write here as well. *)
     User_data.Read { buf; pos; offset; len }
-    |> Io_uring.read io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos)
+    |>
+    if use_non_v
+    then Io_uring.read io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos)
+    else (
+      let iovec = Unix.IOVec.of_bigstring ~pos ~len:(len - pos) buf in
+      Io_uring.readv io_uring fd [| iovec |] ~offset:(offset + pos))
   in
   if sq_full then raise_s [%message "submission queue is full"]
 ;;
 
-let write io_uring fd ~pos ~offset ~len buf =
+let write ?(use_non_v = false) io_uring fd ~pos ~offset ~len buf =
   let sq_full =
     User_data.Write { buf; pos; offset; len }
-    |> Io_uring.write io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos)
+    |>
+    if use_non_v
+    then Io_uring.write io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos)
+    else (
+      let iovec = Unix.IOVec.of_bigstring ~pos ~len:(len - pos) buf in
+      Io_uring.writev io_uring fd [| iovec |] ~offset:(offset + pos))
   in
   if sq_full then raise_s [%message "submission queue is full"]
 ;;
