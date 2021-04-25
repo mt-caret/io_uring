@@ -31,15 +31,14 @@ end
 
 [%%import "config.h"]
 
-(* TOIMPL: possibly prove for functionality via io_uring_get_probe() *)
-external flag_pollin : unit -> Int63.t = "poll_POLLIN_flag"
-external flag_pollpri : unit -> Int63.t = "poll_POLLPRI_flag"
-external flag_pollout : unit -> Int63.t = "poll_POLLOUT_flag"
-external flag_pollerr : unit -> Int63.t = "poll_POLLERR_flag"
-external flag_pollhup : unit -> Int63.t = "poll_POLLHUP_flag"
-
 (* We use [Int63] rather than [Int] because these flags use 16 bits. *)
 module Poll_flags = struct
+  external flag_pollin : unit -> Int63.t = "poll_POLLIN_flag"
+  external flag_pollpri : unit -> Int63.t = "poll_POLLPRI_flag"
+  external flag_pollout : unit -> Int63.t = "poll_POLLOUT_flag"
+  external flag_pollerr : unit -> Int63.t = "poll_POLLERR_flag"
+  external flag_pollhup : unit -> Int63.t = "poll_POLLHUP_flag"
+
   let none = Int63.zero
   let in_ = flag_pollin ()
   let pri = flag_pollpri ()
@@ -55,6 +54,39 @@ module Poll_flags = struct
   end)
 end
 
+module Sqe_flags = struct
+  external flag_fixed_file : unit -> Int63.t = "sqe_IOSQE_FIXED_FILE_flag"
+  external flag_io_drain : unit -> Int63.t = "sqe_IOSQE_IO_DRAIN_flag"
+  external flag_io_link : unit -> Int63.t = "sqe_IOSQE_IO_LINK_flag"
+  external flag_io_hardlink : unit -> Int63.t = "sqe_IOSQE_IO_HARDLINK_flag"
+  external flag_async : unit -> Int63.t = "sqe_IOSQE_ASYNC_flag"
+  external flag_buffer_select : unit -> Int63.t = "sqe_IOSQE_BUFFER_SELECT_flag"
+
+  let none = Int63.zero
+  let fixed_file = flag_fixed_file ()
+  let io_drain = flag_io_drain ()
+  let io_link = flag_io_link ()
+  let io_hardlink = flag_io_hardlink ()
+  let async = flag_async ()
+  let buffer_select = flag_buffer_select ()
+
+  include Flags.Make (struct
+    let allow_intersecting = true
+    let should_print_error = true
+    let remove_zero_flags = false
+
+    let known =
+      [ fixed_file, "fixed_file"
+      ; io_drain, "io_drain"
+      ; io_link, "io_link"
+      ; io_hardlink, "io_hardlink"
+      ; async, "async"
+      ; buffer_select, "buffer_select"
+      ]
+    ;;
+  end)
+end
+
 (* TOIMPL: flesh out the interface here *)
 type _ io_uring
 
@@ -66,11 +98,17 @@ external create
 
 external close : _ io_uring -> unit = "io_uring_queue_exit_stub"
 
-external prepare_nop : 'a io_uring -> user_data:int -> bool = "io_uring_prep_nop_stub"
+external prepare_nop
+  :  'a io_uring
+  -> Sqe_flags.t
+  -> user_data:int
+  -> bool
+  = "io_uring_prep_nop_stub"
   [@@noalloc]
 
 external prepare_write
   :  'a io_uring
+  -> Sqe_flags.t
   -> File_descr.t
   -> pos:int
   -> len:int
@@ -83,6 +121,7 @@ external prepare_write
 
 external prepare_read
   :  'a io_uring
+  -> Sqe_flags.t
   -> File_descr.t
   -> pos:int
   -> len:int
@@ -95,6 +134,7 @@ external prepare_read
 
 external prepare_writev
   :  'a io_uring
+  -> Sqe_flags.t
   -> File_descr.t
   -> Bigstring.t IOVec.t array
   -> count:int
@@ -106,6 +146,7 @@ external prepare_writev
 
 external prepare_readv
   :  'a io_uring
+  -> Sqe_flags.t
   -> File_descr.t
   -> Bigstring.t IOVec.t array
   -> count:int
@@ -117,6 +158,7 @@ external prepare_readv
 
 external prepare_close
   :  'a io_uring
+  -> Sqe_flags.t
   -> File_descr.t
   -> user_data:int
   -> bool
@@ -125,6 +167,7 @@ external prepare_close
 
 external prepare_poll_add
   :  'a io_uring
+  -> Sqe_flags.t
   -> File_descr.t
   -> Poll_flags.t
   -> user_data:int
@@ -134,6 +177,7 @@ external prepare_poll_add
 
 external prepare_poll_remove
   :  'a io_uring
+  -> Sqe_flags.t
   -> user_data:int
   -> bool
   = "io_uring_prep_poll_remove_stub"
@@ -227,61 +271,64 @@ let create ~max_submission_entries ~max_completion_entries =
 
 let close t = close t.io_uring
 
-let prepare_nop t a =
-  are_slots_full t || prepare_nop t.io_uring ~user_data:t.head |> alloc_user_data t a
+let prepare_nop t sqe_flags a =
+  are_slots_full t
+  || prepare_nop t.io_uring sqe_flags ~user_data:t.head |> alloc_user_data t a
 ;;
 
-let prepare_write t fd ?(pos = 0) ?len bstr ~offset a =
+let prepare_write t sqe_flags fd ?(pos = 0) ?len bstr ~offset a =
   are_slots_full t
   ||
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.write" ~pos ~len bstr;
-  prepare_write t.io_uring fd ~pos ~len bstr ~offset ~user_data:t.head
+  prepare_write t.io_uring sqe_flags fd ~pos ~len bstr ~offset ~user_data:t.head
   |> alloc_user_data t a
 ;;
 
-let prepare_read t fd ?(pos = 0) ?len bstr ~offset a =
+let prepare_read t sqe_flags fd ?(pos = 0) ?len bstr ~offset a =
   are_slots_full t
   ||
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.read" ~pos ~len bstr;
-  prepare_read t.io_uring fd ~pos ~len bstr ~offset ~user_data:t.head
+  prepare_read t.io_uring sqe_flags fd ~pos ~len bstr ~offset ~user_data:t.head
   |> alloc_user_data t a
 ;;
 
-let prepare_writev t fd iovecs ~offset a =
+let prepare_writev t sqe_flags fd iovecs ~offset a =
   are_slots_full t
   ||
   let count = Array.length iovecs in
-  prepare_writev t.io_uring fd iovecs ~count ~offset ~user_data:t.head
+  prepare_writev t.io_uring sqe_flags fd iovecs ~count ~offset ~user_data:t.head
   |> alloc_user_data t a
 ;;
 
-let prepare_readv t fd iovecs ~offset a =
+let prepare_readv t sqe_flags fd iovecs ~offset a =
   are_slots_full t
   ||
   let count = Array.length iovecs in
-  prepare_readv t.io_uring fd iovecs ~count ~offset ~user_data:t.head
+  prepare_readv t.io_uring sqe_flags fd iovecs ~count ~offset ~user_data:t.head
   |> alloc_user_data t a
 ;;
 
-let prepare_close t fd a =
-  are_slots_full t || prepare_close t.io_uring fd ~user_data:t.head |> alloc_user_data t a
+let prepare_close t sqe_flags fd a =
+  are_slots_full t
+  || prepare_close t.io_uring sqe_flags fd ~user_data:t.head |> alloc_user_data t a
 ;;
 
-let prepare_poll_add t fd flags a =
+let prepare_poll_add t sqe_flags fd flags a =
   if are_slots_full t
   then -1
   else (
     let index = t.head in
     let sq_full =
-      prepare_poll_add t.io_uring fd flags ~user_data:t.head |> alloc_user_data t a
+      prepare_poll_add t.io_uring sqe_flags fd flags ~user_data:t.head
+      |> alloc_user_data t a
     in
     if sq_full then -1 else index)
 ;;
 
-let prepare_poll_remove t tag =
-  are_slots_full t || prepare_poll_remove t.io_uring ~user_data:tag
+let prepare_poll_remove t sqe_flags tag =
+  are_slots_full t || prepare_poll_remove t.io_uring sqe_flags ~user_data:tag
 ;;
 
 (* TOIMPL: add invariant that num_in_flight is always >= 0? *)

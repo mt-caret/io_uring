@@ -45,10 +45,26 @@ module User_data = struct
     let sq_full =
       if use_non_v
       then
-        dispatch_non_v kind io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos) t
+        dispatch_non_v
+          kind
+          io_uring
+          Io_uring.Sqe_flags.none
+          fd
+          ~pos
+          ~len:(len - pos)
+          buf
+          ~offset:(offset + pos)
+          t
       else (
         let iovec = Unix.IOVec.of_bigstring ~pos ~len:(len - pos) buf in
-        dispatch kind io_uring fd [| iovec |] ~offset:(offset + pos) t)
+        dispatch
+          kind
+          io_uring
+          Io_uring.Sqe_flags.none
+          fd
+          [| iovec |]
+          ~offset:(offset + pos)
+          t)
     in
     if sq_full then raise_s [%message "submission queue is full"]
   ;;

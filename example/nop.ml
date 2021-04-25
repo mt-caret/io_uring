@@ -14,7 +14,7 @@ let () =
        in
        let start = Time_ns.now () in
        for i = 1 to max_submission_entries do
-         let sq_full = Io_uring.prepare_nop io_uring 0 in
+         let sq_full = Io_uring.prepare_nop io_uring Io_uring.Sqe_flags.none 0 in
          if sq_full then failwith "submission queue is full"
        done;
        let n_submitted = Io_uring.submit io_uring in
