@@ -17,7 +17,7 @@ module Tag : sig
   end
 end
 
-module Flags : sig
+module Poll_flags : sig
   (** An [Io_uring.Flags.t] is an immutable set of poll(2) flags for which one can
           register interest in a file descriptor.  It is implemented as a bitmask, and
           so all operations (+, -, etc.) are constant time with no allocation.
@@ -108,7 +108,7 @@ val prepare_close : 'a t -> File_descr.t -> 'a -> bool
     and will take effect when [submit] is called. It returns an
     ['a Tag.Option.t] which is empty when the underlying submission queue is
     full and submission fails *)
-val prepare_poll_add : 'a t -> File_descr.t -> Flags.t -> 'a -> 'a Tag.Option.t
+val prepare_poll_add : 'a t -> File_descr.t -> Poll_flags.t -> 'a -> 'a Tag.Option.t
 
 val prepare_poll_remove : 'a t -> 'a Tag.t -> bool
 val submit : 'a t -> int

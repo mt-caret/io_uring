@@ -39,7 +39,7 @@ external flag_pollerr : unit -> Int63.t = "poll_POLLERR_flag"
 external flag_pollhup : unit -> Int63.t = "poll_POLLHUP_flag"
 
 (* We use [Int63] rather than [Int] because these flags use 16 bits. *)
-module Flags = struct
+module Poll_flags = struct
   let none = Int63.zero
   let in_ = flag_pollin ()
   let pri = flag_pollpri ()
@@ -126,7 +126,7 @@ external prepare_close
 external prepare_poll_add
   :  'a io_uring
   -> File_descr.t
-  -> Flags.t
+  -> Poll_flags.t
   -> user_data:int
   -> bool
   = "io_uring_prep_poll_add_stub"
