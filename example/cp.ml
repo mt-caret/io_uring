@@ -18,58 +18,50 @@ let batch_size = 32 * 1024
 
 module User_data = struct
   type t =
-    | Read of
-        { buf : (Bigstring.t[@sexp.opaque])
-        ; pos : int
-        ; offset : int
-        ; len : int
-        }
-    | Write of
-        { buf : (Bigstring.t[@sexp.opaque])
-        ; pos : int
-        ; offset : int
-        ; len : int
-        }
-  [@@deriving sexp]
+    { kind : [ `Read | `Write ]
+    ; buf : (Bigstring.t[@sexp.opaque])
+    ; pos : int
+    ; offset : int
+    ; len : int
+    }
+  [@@deriving sexp, fields]
 
   let to_string = Fn.compose Sexp.to_string [%sexp_of: t]
+
+  let dispatch = function
+    | `Read -> Io_uring.readv
+    | `Write -> Io_uring.writev
+  ;;
+
+  let dispatch_non_v = function
+    | `Read -> Io_uring.read
+    | `Write -> Io_uring.write
+  ;;
+
+  (* the original implementation uses readv/writev, but we demonstrate use of
+    * read/write here as well. *)
+  let prepare ?(use_non_v = false) t ~io_uring ~fd =
+    let { kind; buf; pos; offset; len } = t in
+    let sq_full =
+      if use_non_v
+      then
+        dispatch_non_v kind io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos) t
+      else (
+        let iovec = Unix.IOVec.of_bigstring ~pos ~len:(len - pos) buf in
+        dispatch kind io_uring fd [| iovec |] ~offset:(offset + pos) t)
+    in
+    if sq_full then raise_s [%message "submission queue is full"]
+  ;;
+
+  let create = Fields.create
 end
-
-let read ?(use_non_v = false) io_uring fd ~pos ~offset ~len =
-  let buf = Bigstring.create len in
-  let sq_full =
-    (* the original implementation uses readv/writev, but we demonstrate use of
-     * read/write here as well. *)
-    User_data.Read { buf; pos; offset; len }
-    |>
-    if use_non_v
-    then Io_uring.read io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos)
-    else (
-      let iovec = Unix.IOVec.of_bigstring ~pos ~len:(len - pos) buf in
-      Io_uring.readv io_uring fd [| iovec |] ~offset:(offset + pos))
-  in
-  if sq_full then raise_s [%message "submission queue is full"]
-;;
-
-let write ?(use_non_v = false) io_uring fd ~pos ~offset ~len buf =
-  let sq_full =
-    User_data.Write { buf; pos; offset; len }
-    |>
-    if use_non_v
-    then Io_uring.write io_uring fd ~pos ~len:(len - pos) buf ~offset:(offset + pos)
-    else (
-      let iovec = Unix.IOVec.of_bigstring ~pos ~len:(len - pos) buf in
-      Io_uring.writev io_uring fd [| iovec |] ~offset:(offset + pos))
-  in
-  if sq_full then raise_s [%message "submission queue is full"]
-;;
 
 let submit io_uring =
   let ret = Io_uring.submit io_uring in
   if ret < 0 then Unix.unix_error (-ret) "Io_uring.submit" ""
 ;;
 
-let copy_file ~io_uring ~infd ~outfd ~insize ~debug =
+let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
   let offset = ref 0 in
   let bytes_to_issue_read = ref insize in
   let bytes_to_issue_write = ref insize in
@@ -81,7 +73,9 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug =
       !bytes_to_issue_read > 0 && !read_submissions + !write_submissions < queue_depth
     do
       let len = Int.min !bytes_to_issue_read batch_size in
-      read io_uring infd ~pos:0 ~offset:!offset ~len;
+      let buf = Bigstring.create len in
+      User_data.create ~kind:`Read ~buf ~pos:0 ~offset:!offset ~len
+      |> User_data.prepare ~use_non_v ~io_uring ~fd:infd;
       bytes_to_issue_read := !bytes_to_issue_read - len;
       offset := !offset + len;
       incr read_submissions;
@@ -96,18 +90,32 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug =
       Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags ->
           if res < 0
           then Unix.unix_error (-res) "Io_uring.read" [%string "%{user_data#User_data}"];
-          match user_data with
-          | Read { buf; pos; offset; len } ->
-            if pos + res < len
-            then read io_uring infd ~pos:(pos + res) ~offset ~len
+          match user_data.kind with
+          | `Read ->
+            if user_data.pos + res < user_data.len
+            then
+              User_data.prepare
+                ~use_non_v
+                { user_data with pos = user_data.pos + res }
+                ~io_uring
+                ~fd:infd
             else (
-              write io_uring outfd ~pos:0 ~offset ~len buf;
-              bytes_to_issue_write := !bytes_to_issue_write - len;
+              User_data.prepare
+                ~use_non_v
+                { user_data with kind = `Write; pos = 0 }
+                ~io_uring
+                ~fd:outfd;
+              bytes_to_issue_write := !bytes_to_issue_write - user_data.len;
               decr read_submissions;
               incr write_submissions)
-          | Write { buf; pos; offset; len } ->
-            if pos + res < len
-            then write io_uring outfd ~pos:(pos + res) ~offset ~len buf
+          | `Write ->
+            if user_data.pos + res < user_data.len
+            then
+              User_data.prepare
+                ~use_non_v
+                { user_data with pos = user_data.pos + res }
+                ~io_uring
+                ~fd:outfd
             else decr write_submissions);
       first_completion := false;
       got_completion := Io_uring.num_completions io_uring > 0;
@@ -123,11 +131,16 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug =
     Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags ->
         if res < 0
         then Unix.unix_error (-res) "Io_uring.read" [%string "%{user_data#User_data}"];
-        match user_data with
-        | Read _ -> raise_s [%message "unexpected completion" (user_data : User_data.t)]
-        | Write { buf; pos; offset; len } ->
-          if res < len
-          then write io_uring outfd ~pos:(pos + res) ~offset ~len buf
+        match user_data.kind with
+        | `Read -> raise_s [%message "unexpected completion" (user_data : User_data.t)]
+        | `Write ->
+          if res < user_data.len
+          then
+            User_data.prepare
+              ~use_non_v
+              { user_data with pos = user_data.pos + res }
+              ~io_uring
+              ~fd:outfd
           else decr write_submissions);
     Io_uring.clear_completions io_uring
   done
@@ -138,7 +151,10 @@ let () =
   @@ Command.basic ~summary:"cp clone using io_uring"
   @@ let%map_open.Command infile = anon ("infile" %: Filename.arg_type)
      and outfile = anon ("outfile" %: Filename.arg_type)
-     and debug = flag "debug" no_arg ~doc:"BOOL enable debug output" in
+     and debug = flag "debug" no_arg ~doc:"BOOL enable debug output"
+     and use_non_v =
+       flag "use-non-v" no_arg ~doc:"BOOL use read/write instead of readv/writev"
+     in
      fun () ->
        let infd = Unix.openfile ~mode:Unix.[ O_RDONLY ] infile in
        let outfd =
@@ -153,7 +169,7 @@ let () =
          print_s
            [%message
              "" (infd : Unix.File_descr.t) (outfd : Unix.File_descr.t) (insize : int)];
-       copy_file ~io_uring ~infd ~outfd ~insize ~debug;
+       copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v;
        Unix.close infd;
        Unix.close outfd;
        Io_uring.close io_uring

@@ -170,8 +170,6 @@ CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_fd, value v_i
     user_data->iovecs = copy_iovecs(&total_len, v_iovecs, count);
     assert(Is_block((intptr_t)(void *)user_data));
 
-    printf("write to fd: %d\n", Long_val(v_fd));
-
     io_uring_prep_writev(sqe,
                         (int) Long_val(v_fd),
                         user_data->iovecs,
@@ -202,8 +200,6 @@ CAMLprim value io_uring_prep_readv_stub(value v_io_uring, value v_fd, value v_io
     user_data->immediate = v_user_data;
     user_data->iovecs = copy_iovecs(&total_len, v_iovecs, count);
     assert(Is_block((intptr_t)(void *)user_data));
-
-    printf("read from fd: %d\n", Long_val(v_fd));
 
     io_uring_prep_readv(sqe,
                         (int) Long_val(v_fd),
