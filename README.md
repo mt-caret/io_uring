@@ -15,3 +15,6 @@ TODO
 - [ ] add support for submission queue polling
 - [ ] add support for fixed buffers
 - [ ] add benchmarks
+- [ ] functorize interface to implement a version of the API that explicitly
+      checks whether the kernel supports the relevant functions
+      (similar to Bigstring_unix.recvmmsg_assume_fd_is_nonblocking)
