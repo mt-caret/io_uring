@@ -13,7 +13,7 @@ let get_file_size fd =
     raise_s [%message "file kind not supported" (kind : Unix.file_kind)]
 ;;
 
-let queue_depth = 4
+let queue_depth = 64
 let batch_size = 32 * 1024
 
 module User_data = struct
