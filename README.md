@@ -19,3 +19,5 @@ TODO
       checks whether the kernel supports the relevant functions
       (similar to Bigstring_unix.recvmmsg_assume_fd_is_nonblocking)
   - `io_uring_get_probe()`
+- [ ] change `'a t ` to `('a, 'witness) t` to prevent cross-instance usage?
+  - idea: ensure only one version exists with something like `Io_uring.Make()`
