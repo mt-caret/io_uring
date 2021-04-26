@@ -87,6 +87,32 @@ module Sqe_flags = struct
   end)
 end
 
+module Queued_sockaddr = struct
+  type t
+
+  module Option = struct
+    module T = struct
+      type value = t
+      type t = value
+
+      let is_none t = Obj.magic t = 0
+      let unsafe_value t = t
+      let to_option t = if is_none t then None else Some (unsafe_value t)
+    end
+
+    include T
+
+    module Optional_syntax = struct
+      include T
+
+      module Optional_syntax = struct
+        let is_none = is_none
+        let unsafe_value = unsafe_value
+      end
+    end
+  end
+end
+
 (* TOIMPL: flesh out the interface here *)
 type _ io_uring
 

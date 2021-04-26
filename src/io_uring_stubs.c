@@ -12,12 +12,14 @@
 #endif
 #include <arpa/inet.h>
 #include <assert.h>
+#include <sys/un.h>
 
 // TOIMPL: move this to jst-config?
 #include <liburing.h>
 
 #include "ocaml_utils.h"
 #include "unix_utils.h"
+#include "socketaddr.h"
 
 /* Bytes_val is only available from 4.06 */
 #ifndef Bytes_val
@@ -161,11 +163,28 @@ CAMLprim value io_uring_prep_read_bytecode_stub(value *argv, int argn)
   return io_uring_prep_read_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
 }
 
-struct iovecs_and_immediate {
-  struct iovec *iovecs;
+typedef enum {
+  IOVECS,
+  SOCKADDR
+} tag_type;
+
+struct queued_sockaddr {
+  union sock_addr_union addr;
+  socklen_t addr_len;
+  bool completed;
+  int retcode;
+};
+
+struct tagged_immediate {
+  tag_type tag_type;
+  union {
+    struct iovec *iovecs;
+    struct queued_sockaddr sockaddr;
+  };
   value immediate;
 };
 
+// TODO: we should CAMLparam here
 CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_iovecs, value v_count, value v_offset, value v_user_data)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
@@ -176,11 +195,12 @@ CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_sqe_flags, va
     size_t total_len = 0;
 
     assert(Is_long(v_user_data));
-    struct iovecs_and_immediate* user_data =
-      caml_stat_alloc(sizeof(struct iovecs_and_immediate));
-    user_data->immediate = v_user_data;
+    struct tagged_immediate* user_data =
+      caml_stat_alloc(sizeof(struct tagged_immediate));
+    assert(Is_block((uintptr_t)user_data));
+    user_data->tag_type = IOVECS;
     user_data->iovecs = copy_iovecs(&total_len, v_iovecs, count);
-    assert(Is_block((intptr_t)(void *)user_data));
+    user_data->immediate = v_user_data;
 
     io_uring_prep_writev(sqe,
                         (int) Long_val(v_fd),
@@ -208,11 +228,12 @@ CAMLprim value io_uring_prep_readv_stub(value v_io_uring, value v_sqe_flags, val
     size_t total_len = 0;
 
     assert(Is_long(v_user_data));
-    struct iovecs_and_immediate* user_data =
-      caml_stat_alloc(sizeof(struct iovecs_and_immediate));
-    user_data->immediate = v_user_data;
+    struct tagged_immediate* user_data =
+      caml_stat_alloc(sizeof(struct tagged_immediate));
+    assert(Is_block((uintptr_t)user_data));
+    user_data->tag_type = IOVECS;
     user_data->iovecs = copy_iovecs(&total_len, v_iovecs, count);
-    assert(Is_block((intptr_t)(void *)user_data));
+    user_data->immediate = v_user_data;
 
     io_uring_prep_readv(sqe,
                         (int) Long_val(v_fd),
@@ -286,6 +307,45 @@ CAMLprim value io_uring_prep_close_stub(value v_io_uring, value v_sqe_flags, val
   }
 }
 
+// TODO: I think we need to make this abstract and attach a destructor to make sure this is freed.
+#define Queued_sockaddr_val(v) ((struct queued_sockaddr *) (v & ~1))
+#define Val_queued_sockaddr(p) ((value) p | 1)
+
+CAMLprim value io_uring_prep_accept_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_user_data)
+{
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_queued_sockaddr(NULL);
+  } else {
+
+    struct queued_sockaddr* p = caml_stat_alloc(sizeof(struct queued_sockaddr));
+    assert (Is_long((uintptr_t) p));
+    p->addr_len = sizeof(union sock_addr_union);
+    p->completed = false;
+
+    // TODO: support accept4() flags?
+    io_uring_prep_accept(sqe, (int) Long_val(v_fd), &(p->addr.s_gen), &(p->addr_len), 0);
+    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
+    return Val_queued_sockaddr(p);
+  }
+}
+
+CAMLprim value io_uring_get_sockaddr(value v_queued_sockaddr) {
+  CAMLparam0();
+  CAMLlocal1(sockaddr);
+
+  struct queued_sockaddr *p = Queued_sockaddr_val(v_queued_sockaddr);
+  if (p->completed) {
+    sockaddr = caml_alloc_small(2, 0);
+    Field(sockaddr, 0) = Val_int(p->retcode);
+    Field(sockaddr, 1) = alloc_sockaddr(&(p->addr), p->addr_len, p->retcode);
+    CAMLreturn(caml_alloc_some(sockaddr));
+  } else {
+    CAMLreturn(Val_none);
+  }
+}
+
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_flags, value v_user_data)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
@@ -302,7 +362,7 @@ CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_sqe_flags, 
   }
 }
 
-CAMLprim value io_uring_prep_poll_add_bytecode_stub(value *argv, int argn) {
+CAMLprim value io_uring_prep_poll_add_bytecode_stub(value *argv, int argn){
   return io_uring_prep_poll_add_stub(argv[0], argv[1], argv[2], argv[3], argv[4]);
 }
 
@@ -399,12 +459,22 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     // skip results from io_uring_prep_poll_remove
     if ((void *) buffer->user_data != NULL) {
       if (Is_block(buffer->user_data)) {
-        struct iovecs_and_immediate *p =
-          (struct iovecs_and_immediate *) buffer->user_data;
-        buffer->user_data = p->immediate;
-        caml_stat_free(p->iovecs);
-        caml_stat_free(p);
-        assert(Is_long(buffer->user_data));
+        struct tagged_immediate *p = (struct tagged_immediate *) buffer->user_data;
+
+        switch (p->tag_type) {
+          case IOVECS:
+            buffer->user_data = p->immediate;
+            caml_stat_free(p->iovecs);
+            caml_stat_free(p);
+            assert(Is_long(buffer->user_data));
+            break;
+          case SOCKADDR:
+            p->sockaddr.completed = true;
+            p->sockaddr.retcode = retcode;
+            break;
+          default:
+            assert(false);
+        }
       }
 
       num_seen++;
@@ -416,5 +486,10 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 }
 
 CAMLprim value io_uring_get_user_data(value v_array, value v_index) {
-  return ((struct io_uring_cqe *) Caml_ba_data_val(v_array) + Int_val(v_index))->user_data;
+  value user_data = 
+    ((struct io_uring_cqe *) Caml_ba_data_val(v_array) + Int_val(v_index))->user_data;
+  return
+    Is_block(user_data) ?
+    ((struct tagged_immediate *) user_data)->immediate :
+    user_data;
 }
