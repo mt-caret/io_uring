@@ -308,26 +308,31 @@ CAMLprim value io_uring_prep_close_stub(value v_io_uring, value v_sqe_flags, val
 }
 
 // TODO: I think we need to make this abstract and attach a destructor to make sure this is freed.
-#define Queued_sockaddr_val(v) ((struct queued_sockaddr *) (v & ~1))
-#define Val_queued_sockaddr(p) ((value) p | 1)
+#define Queued_sockaddr_val(v) *((struct queued_sockaddr **) Data_abstract_val(v))
 
 CAMLprim value io_uring_prep_accept_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_user_data)
 {
+  CAMLparam2(v_io_uring, v_user_data);
+  CAMLlocal1(v);
+
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   if (sqe == NULL) {
-    return Val_queued_sockaddr(NULL);
+    CAMLreturn(Val_none);
   } else {
-
     struct queued_sockaddr* p = caml_stat_alloc(sizeof(struct queued_sockaddr));
     assert (Is_long((uintptr_t) p));
     p->addr_len = sizeof(union sock_addr_union);
     p->completed = false;
 
+    v = caml_alloc(1, Abstract_tag);
+    Queued_sockaddr_val(v) = p;
+
     // TODO: support accept4() flags?
     io_uring_prep_accept(sqe, (int) Long_val(v_fd), &(p->addr.s_gen), &(p->addr_len), 0);
     sqe->flags |= Int63_val(v_sqe_flags);
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
-    return Val_queued_sockaddr(p);
+
+    CAMLreturn(caml_alloc_some(v));
   }
 }
 
@@ -344,6 +349,10 @@ CAMLprim value io_uring_get_sockaddr(value v_queued_sockaddr) {
   } else {
     CAMLreturn(Val_none);
   }
+}
+
+CAMLprim value io_uring_free_sockaddr(value v_queued_sockaddr) {
+  caml_stat_free(Queued_sockaddr_val(v_queued_sockaddr));
 }
 
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_flags, value v_user_data)

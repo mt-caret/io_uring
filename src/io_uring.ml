@@ -90,6 +90,8 @@ end
 module Queued_sockaddr = struct
   type t
 
+  external unsafe_free : t -> unit = "io_uring_free_sockaddr"
+
   module Option = struct
     module T = struct
       type value = t
@@ -214,6 +216,14 @@ external prepare_close
   -> bool
   = "io_uring_prep_close_stub"
   [@@noaloc]
+
+external prepare_accept
+  :  'a io_uring
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> user_data:int
+  -> Queued_sockaddr.t option
+  = "io_uring_prep_accept_stub"
 
 external prepare_poll_add
   :  'a io_uring
@@ -381,6 +391,19 @@ let prepare_recv t sqe_flags fd ?(pos = 0) ?len bstr a =
 let prepare_close t sqe_flags fd a =
   are_slots_full t
   || prepare_close t.io_uring sqe_flags fd ~user_data:t.head |> alloc_user_data t a
+;;
+
+let prepare_accept t sqe_flags fd a =
+  let sq_full =
+    are_slots_full t
+    ||
+    match prepare_accept t.io_uring sqe_flags fd ~user_data:t.head with
+    | None -> true
+    | Some queued_sockaddr ->
+      Gc.Expert.add_finalizer_exn queued_sockaddr Queued_sockaddr.unsafe_free;
+      false
+  in
+  alloc_user_data t a sq_full
 ;;
 
 let prepare_poll_add t sqe_flags fd flags a =
