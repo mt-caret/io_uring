@@ -230,6 +230,50 @@ CAMLprim value io_uring_prep_readv_bytecode_stub(value *argv, int argn) {
   return io_uring_prep_readv_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 }
 
+CAMLprim value io_uring_prep_send_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_pos, value v_len, value v_bstr, value v_user_data) {
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_bool(true);
+  } else {
+    // TODO: possibly pass some flags to send()?
+    io_uring_prep_send(sqe,
+                        (int) Long_val(v_fd),
+                        get_bstr(v_bstr, v_pos),
+                        (unsigned) Long_val(v_len),
+                        0);
+    sqe->flags |= Int63_val(v_sqe_flags);
+    // debug: printf("user_data: %d\n", v_user_data);
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
+    return Val_bool(false);
+  }
+}
+
+CAMLprim value io_uring_prep_send_bytecode_stub(value *argv, int argn) {
+  return io_uring_prep_send_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
+}
+
+CAMLprim value io_uring_prep_recv_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_pos, value v_len, value v_bstr, value v_user_data) {
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  if (sqe == NULL) {
+    return Val_bool(true);
+  } else {
+    // TODO: possibly pass some flags to recv()?
+    io_uring_prep_recv(sqe,
+                        (int) Long_val(v_fd),
+                        get_bstr(v_bstr, v_pos),
+                        (unsigned) Long_val(v_len),
+                        0);
+    sqe->flags |= Int63_val(v_sqe_flags);
+    // debug: printf("user_data: %d\n", v_user_data);
+    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
+    return Val_bool(false);
+  }
+}
+
+CAMLprim value io_uring_prep_recv_bytecode_stub(value *argv, int argn) {
+  return io_uring_prep_recv_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
+}
+
 CAMLprim value io_uring_prep_close_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_user_data) {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   if (sqe == NULL) {

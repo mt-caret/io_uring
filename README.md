@@ -24,3 +24,4 @@ TODO
 - [ ] add tests
 - [ ] create default value with `Obj.magic` and check for emptiness in `user_data` array via `phys_equal` in invariant
 - [ ] properly allocate `io_uring`
+- [ ] test `prep_send`/`prep_recv` with httpaf?

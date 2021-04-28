@@ -119,6 +119,26 @@ val prepare_readv
   -> 'a
   -> bool
 
+val prepare_send
+  :  'a t
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> ?pos:int
+  -> ?len:int
+  -> Bigstring.t
+  -> 'a
+  -> bool
+
+val prepare_recv
+  :  'a t
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> ?pos:int
+  -> ?len:int
+  -> Bigstring.t
+  -> 'a
+  -> bool
+
 (* TODO: test *)
 val prepare_close : 'a t -> Sqe_flags.t -> File_descr.t -> 'a -> bool
 
