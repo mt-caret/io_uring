@@ -25,3 +25,5 @@ TODO
 - [ ] create default value with `Obj.magic` and check for emptiness in `user_data` array via `phys_equal` in invariant
 - [ ] properly allocate `io_uring`
 - [ ] test `prep_send`/`prep_recv` with httpaf?
+- [ ] check for errno in library
+- [ ] add ``Wait_for_num_completions of int` to `Io_uring.wait`

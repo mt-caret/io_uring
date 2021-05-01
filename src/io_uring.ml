@@ -90,29 +90,8 @@ end
 module Queued_sockaddr = struct
   type t
 
+  external thread_unsafe_get : t -> Unix.sockaddr option = "io_uring_get_sockaddr"
   external unsafe_free : t -> unit = "io_uring_free_sockaddr"
-
-  module Option = struct
-    module T = struct
-      type value = t
-      type t = value
-
-      let is_none t = Obj.magic t = 0
-      let unsafe_value t = t
-      let to_option t = if is_none t then None else Some (unsafe_value t)
-    end
-
-    include T
-
-    module Optional_syntax = struct
-      include T
-
-      module Optional_syntax = struct
-        let is_none = is_none
-        let unsafe_value = unsafe_value
-      end
-    end
-  end
 end
 
 (* TOIMPL: flesh out the interface here *)
@@ -394,16 +373,14 @@ let prepare_close t sqe_flags fd a =
 ;;
 
 let prepare_accept t sqe_flags fd a =
-  let sq_full =
-    are_slots_full t
-    ||
-    match prepare_accept t.io_uring sqe_flags fd ~user_data:t.head with
-    | None -> true
-    | Some queued_sockaddr ->
-      Gc.Expert.add_finalizer_exn queued_sockaddr Queued_sockaddr.unsafe_free;
-      false
-  in
-  alloc_user_data t a sq_full
+  if are_slots_full t
+  then None
+  else (
+    let res = prepare_accept t.io_uring sqe_flags fd ~user_data:t.head in
+    Option.iter res ~f:(fun queued_sockaddr ->
+        Gc.Expert.add_finalizer_exn queued_sockaddr Queued_sockaddr.unsafe_free);
+    ignore (alloc_user_data t a (Option.is_some res) : bool);
+    res)
 ;;
 
 let prepare_poll_add t sqe_flags fd flags a =
