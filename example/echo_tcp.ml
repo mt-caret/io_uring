@@ -1,6 +1,6 @@
 open Core
 
-(* TODO: clean up *)
+(* a port of https://github.com/frevib/io_uring-echo-server/blob/master/io_uring_echo_server.c *)
 
 let queue_depth = 2048
 
