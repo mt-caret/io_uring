@@ -5,8 +5,8 @@ let queue_depth = 2048
 module User_data = struct
   type t =
     | Accept
-    | Recv of Unix.File_descr.t * Bigstring.t
-    | Send of Unix.File_descr.t * Bigstring.t * int
+    | Recv of Unix.File_descr.t * (Bigstring.t[@sexp.opaque])
+    | Send of Unix.File_descr.t * (Bigstring.t[@sexp.opaque]) * int
   [@@deriving sexp_of]
 
   let prepare t ~io_uring ~sockfd ~queued_sockaddr_ref =
@@ -47,32 +47,32 @@ let run ~queue_depth ~port ~backlog ~max_message_len =
       ~max_completion_entries:(queue_depth * 2)
   in
   let queued_sockaddr_ref = ref None in
-  User_data.(prepare Accept) ~io_uring ~sockfd ~queued_sockaddr_ref;
   let prepare = User_data.prepare ~io_uring ~sockfd ~queued_sockaddr_ref in
+  prepare User_data.Accept;
   while true do
     submit io_uring;
     Io_uring.wait io_uring ~timeout:`Never;
-    let handle_completion ~user_data ~res ~flags =
-      match (user_data : User_data.t) with
-      | Accept ->
-        if res < 0 then Unix.unix_error (-res) "Io_uring.accept" "";
-        User_data.Recv (Unix.File_descr.of_int res, Bigstring.create max_message_len)
-        |> prepare;
-        let sockaddr =
-          Option.bind !queued_sockaddr_ref ~f:Io_uring.Queued_sockaddr.thread_unsafe_get
-          |> Option.value_exn
-        in
-        print_s [%message "client connected" (sockaddr : Unix.sockaddr)];
-        prepare User_data.(Accept)
-      | Recv (fd, buf) ->
-        (* TODO: fix handling *)
-        if res < 0 then Unix.unix_error (-res) "Io_uring.recv" "";
-        User_data.Send (fd, buf, res) |> prepare
-      | Send (fd, buf, _len) ->
-        if res < 0 then Unix.unix_error (-res) "Io_uring.send" "";
-        User_data.Recv (Unix.File_descr.of_int res, buf) |> prepare
-    in
-    Io_uring.iter_completions io_uring ~f:handle_completion;
+    Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags ->
+        print_s [%message "" (user_data : User_data.t) (res : int) (flags : int)];
+        match (user_data : User_data.t) with
+        | Accept ->
+          if res < 0 then Unix.unix_error (-res) "Io_uring.accept" "";
+          User_data.Recv (Unix.File_descr.of_int res, Bigstring.create max_message_len)
+          |> prepare;
+          let sockaddr =
+            Option.value_exn !queued_sockaddr_ref
+            |> Io_uring.Queued_sockaddr.thread_unsafe_get
+            |> Option.value_exn
+          in
+          print_s [%message "client connected" (sockaddr : Unix.sockaddr)];
+          prepare User_data.Accept
+        | Recv (fd, buf) ->
+          (* TODO: fix handling *)
+          if res < 0 then Unix.unix_error (-res) "Io_uring.recv" "";
+          User_data.Send (fd, buf, res) |> prepare
+        | Send (fd, buf, _len) ->
+          if res < 0 then Unix.unix_error (-res) "Io_uring.send" "";
+          User_data.Recv (Unix.File_descr.of_int res, buf) |> prepare);
     Io_uring.clear_completions io_uring
   done
 ;;

@@ -179,7 +179,7 @@ struct tagged_immediate {
   tag_type tag_type;
   union {
     struct iovec *iovecs;
-    struct queued_sockaddr sockaddr;
+    struct queued_sockaddr *sockaddr;
   };
   value immediate;
 };
@@ -253,6 +253,7 @@ CAMLprim value io_uring_prep_readv_bytecode_stub(value *argv, int argn) {
 
 CAMLprim value io_uring_prep_send_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_pos, value v_len, value v_bstr, value v_user_data) {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  puts("io_uring_prep_send_stub");
   if (sqe == NULL) {
     return Val_bool(true);
   } else {
@@ -275,6 +276,7 @@ CAMLprim value io_uring_prep_send_bytecode_stub(value *argv, int argn) {
 
 CAMLprim value io_uring_prep_recv_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_pos, value v_len, value v_bstr, value v_user_data) {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  puts("io_uring_prep_recv_stub");
   if (sqe == NULL) {
     return Val_bool(true);
   } else {
@@ -308,51 +310,68 @@ CAMLprim value io_uring_prep_close_stub(value v_io_uring, value v_sqe_flags, val
 }
 
 // TODO: I think we need to make this abstract and attach a destructor to make sure this is freed.
-#define Queued_sockaddr_val(v) *((struct queued_sockaddr **) Data_abstract_val(v))
+#define Queued_sockaddr_val(v) *((struct tagged_immediate **) Data_abstract_val(v))
 
 CAMLprim value io_uring_prep_accept_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_user_data)
 {
   CAMLparam2(v_io_uring, v_user_data);
   CAMLlocal1(v);
 
+  puts("io_uring_prep_accept_stub");
+
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   if (sqe == NULL) {
     CAMLreturn(Val_none);
   } else {
     struct queued_sockaddr* p = caml_stat_alloc(sizeof(struct queued_sockaddr));
-    assert (Is_long((uintptr_t) p));
+    assert (Is_block((uintptr_t) p));
     p->addr_len = sizeof(union sock_addr_union);
     p->completed = false;
 
-    v = caml_alloc(1, Abstract_tag);
-    Queued_sockaddr_val(v) = p;
+    assert(Is_long(v_user_data));
+    struct tagged_immediate* user_data =
+      caml_stat_alloc(sizeof(struct tagged_immediate));
+    assert(Is_block((uintptr_t)user_data));
+    user_data->tag_type = SOCKADDR;
+    user_data->sockaddr = p;
+    user_data->immediate = v_user_data;
 
     // TODO: support accept4() flags?
     io_uring_prep_accept(sqe, (int) Long_val(v_fd), &(p->addr.s_gen), &(p->addr_len), 0);
     sqe->flags |= Int63_val(v_sqe_flags);
-    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
+    io_uring_sqe_set_data(sqe, (void *) user_data);
+
+    v = caml_alloc(1, Abstract_tag);
+    Queued_sockaddr_val(v) = user_data;
 
     CAMLreturn(caml_alloc_some(v));
   }
 }
 
 CAMLprim value io_uring_get_sockaddr(value v_queued_sockaddr) {
-  CAMLparam0();
+  CAMLparam1(v_queued_sockaddr);
   CAMLlocal1(sockaddr);
 
-  struct queued_sockaddr *p = Queued_sockaddr_val(v_queued_sockaddr);
-  if (p->completed) {
-    sockaddr = caml_alloc_small(2, 0);
-    Field(sockaddr, 0) = Val_int(p->retcode);
-    Field(sockaddr, 1) = alloc_sockaddr(&(p->addr), p->addr_len, p->retcode);
-    CAMLreturn(caml_alloc_some(sockaddr));
+  puts("io_uring_get_sockaddr");
+
+  struct tagged_immediate *p = Queued_sockaddr_val(v_queued_sockaddr);
+  assert(p->tag_type == SOCKADDR);
+
+  struct queued_sockaddr *q = p->sockaddr;
+  if (q->completed) {
+    CAMLreturn(caml_alloc_some(alloc_sockaddr(&(q->addr), q->addr_len, q->retcode)));
   } else {
     CAMLreturn(Val_none);
   }
 }
 
 CAMLprim value io_uring_free_sockaddr(value v_queued_sockaddr) {
-  caml_stat_free(Queued_sockaddr_val(v_queued_sockaddr));
+  puts("io_uring_free_sockaddr");
+  struct tagged_immediate *p = Queued_sockaddr_val(v_queued_sockaddr);
+  assert(p->tag_type == SOCKADDR);
+  caml_stat_free(p->sockaddr);
+  p->sockaddr = NULL;
+  caml_stat_free(p);
 }
 
 CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_flags, value v_user_data)
@@ -381,6 +400,7 @@ CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_sqe_flag
   // debug: puts("entered io_uring_prep_poll_remove");
 
   if (sqe == NULL) {
+    puts("returning none");
     return Val_bool(true);
   } else {
     // debug: printf("poll_remove: tag: %llx, %llx\n", v_a, User_data_val(v_a));
@@ -453,7 +473,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
   while (cqe != NULL && num_seen < max_cqes && retcode != -EAGAIN && retcode != -ETIME) {
     memcpy(buffer, cqe, sizeof(struct io_uring_cqe));
 
-    // debug: puts("io_uring_wait: in loop");
+    puts("io_uring_wait: in loop");
 
     io_uring_cqe_seen(Io_uring_val(v_io_uring), cqe);
 
@@ -467,19 +487,23 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 
     // skip results from io_uring_prep_poll_remove
     if ((void *) buffer->user_data != NULL) {
+      printf("handling user_data: %lld\n", buffer->user_data);
+
       if (Is_block(buffer->user_data)) {
         struct tagged_immediate *p = (struct tagged_immediate *) buffer->user_data;
+        buffer->user_data = p->immediate;
 
         switch (p->tag_type) {
           case IOVECS:
-            buffer->user_data = p->immediate;
             caml_stat_free(p->iovecs);
             caml_stat_free(p);
             assert(Is_long(buffer->user_data));
             break;
           case SOCKADDR:
-            p->sockaddr.completed = true;
-            p->sockaddr.retcode = retcode;
+            puts("found sockaddr!");
+            p->sockaddr->completed = true;
+            p->sockaddr->retcode = retcode;
+            puts("finished handling sockaddr");
             break;
           default:
             assert(false);
@@ -491,10 +515,13 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
     }
   }
 
+  puts("out of loop");
+
   CAMLreturn(Val_int(num_seen));
 }
 
 CAMLprim value io_uring_get_user_data(value v_array, value v_index) {
+  puts("io_uring_get_user_data");
   value user_data = 
     ((struct io_uring_cqe *) Caml_ba_data_val(v_array) + Int_val(v_index))->user_data;
   return
