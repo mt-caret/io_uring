@@ -261,7 +261,7 @@ let alloc_user_data (type a) (t : a t) (a : a) sq_full =
   then (
     assert (t.head <> -1);
     let next_index = t.freelist.(t.head) in
-    print_s [%message "alloc_user_data" (t.head : int) (next_index : int)];
+    (* print_s [%message "alloc_user_data" (t.head : int) (next_index : int)]; *)
     t.freelist.(t.head) <- -1;
     t.user_data.(t.head) <- a;
     t.head <- (if next_index = t.head then -1 else next_index));
@@ -269,7 +269,7 @@ let alloc_user_data (type a) (t : a t) (a : a) sq_full =
 ;;
 
 let free_user_data t index =
-  print_s [%message "free_user_data" (t.head : int) (index : int)];
+  (* print_s [%message "free_user_data" (t.head : int) (index : int)]; *)
   t.freelist.(index) <- (if t.head = -1 then index else t.head);
   t.head <- index;
   t.user_data.(index) <- Obj.magic 0

@@ -1,12 +1,14 @@
 open Core
 
+(* TODO: clean up *)
+
 let queue_depth = 2048
 
 module User_data = struct
   type t =
     | Accept
     | Recv of Unix.File_descr.t * (Bigstring.t[@sexp.opaque])
-    | Send of Unix.File_descr.t * (Bigstring.t[@sexp.opaque]) * int
+    | Send of Unix.File_descr.t * (Bigstring.t[@sexp.opaque]) * int * int
   [@@deriving sexp_of]
 
   let prepare t ~io_uring ~sockfd ~queued_sockaddr_ref =
@@ -22,9 +24,9 @@ module User_data = struct
     | Recv (fd, buf) ->
       let sq_full = Io_uring.prepare_recv io_uring Io_uring.Sqe_flags.none fd buf t in
       if sq_full then raise_s [%message "recv: submission queue is full"]
-    | Send (fd, buf, len) ->
+    | Send (fd, buf, pos, len) ->
       let sq_full =
-        Io_uring.prepare_send io_uring Io_uring.Sqe_flags.none fd ~len buf t
+        Io_uring.prepare_send io_uring Io_uring.Sqe_flags.none fd ~pos ~len buf t
       in
       if sq_full then raise_s [%message "send: submission queue is full"]
   ;;
@@ -67,12 +69,16 @@ let run ~queue_depth ~port ~backlog ~max_message_len =
           print_s [%message "client connected" (sockaddr : Unix.sockaddr)];
           prepare User_data.Accept
         | Recv (fd, buf) ->
-          (* TODO: fix handling *)
+          (* TODO: fix handling? *)
           if res < 0 then Unix.unix_error (-res) "Io_uring.recv" "";
-          User_data.Send (fd, buf, res) |> prepare
-        | Send (fd, buf, _len) ->
+          if res = 0
+          then Unix.shutdown fd SHUTDOWN_ALL
+          else User_data.Send (fd, buf, 0, res) |> prepare
+        | Send (fd, buf, off, len) ->
           if res < 0 then Unix.unix_error (-res) "Io_uring.send" "";
-          User_data.Recv (Unix.File_descr.of_int res, buf) |> prepare);
+          if res + off < len
+          then User_data.Send (fd, buf, off + res, len - res) |> prepare
+          else User_data.Recv (fd, buf) |> prepare);
     Io_uring.clear_completions io_uring
   done
 ;;
