@@ -486,7 +486,7 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
 
     // skip results from io_uring_prep_poll_remove
     if ((void *) buffer->user_data != NULL) {
-      printf("handling user_data: %lld\n", buffer->user_data);
+      // debug: printf("handling user_data: %lld\n", buffer->user_data);
 
       if (Is_block(buffer->user_data)) {
         struct tagged_immediate *p = (struct tagged_immediate *) buffer->user_data;
