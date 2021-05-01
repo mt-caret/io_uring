@@ -2,8 +2,6 @@ open Core
 
 (* a port of https://github.com/frevib/io_uring-echo-server/blob/master/io_uring_echo_server.c *)
 
-let queue_depth = 2048
-
 module User_data = struct
   type t =
     | Accept
@@ -83,4 +81,25 @@ let run ~queue_depth ~port ~backlog ~max_message_len =
   done
 ;;
 
-let () = run ~queue_depth:2048 ~port:8000 ~backlog:100 ~max_message_len:4096
+let () =
+  Command.run
+  @@ Command.basic ~summary:"echo server using io_uring"
+  @@ let%map_open.Command queue_depth =
+       flag
+         "queue-depth"
+         (optional_with_default 2048 int)
+         ~doc:"INT submission completion queue depth"
+     and port = flag "port" (required int) ~doc:" port to listen on"
+     and backlog =
+       flag
+         "backlog"
+         (optional_with_default 100 int)
+         ~doc:"INT size of backlog for listen()"
+     and max_message_len =
+       flag
+         "max-message-len"
+         (optional_with_default 4096 int)
+         ~doc:"INT maximum size of messages"
+     in
+     fun () -> run ~queue_depth ~port ~backlog ~max_message_len
+;;

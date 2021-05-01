@@ -28,3 +28,4 @@ TODO
 - [ ] check for errno in library
 - [ ] add ``Wait_for_num_completions of int` to `Io_uring.wait`
 - [ ] allocate Queued_sockaddr on the heap
+- [ ] add buffer provision support (and add it in echo server)
