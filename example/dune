@@ -15,3 +15,9 @@
   (modules echo_tcp)
   (libraries core io_uring)
   (preprocess (pps ppx_jane)))
+
+(executables
+  (names http)
+  (modules http)
+  (libraries core httpaf io_uring)
+  (preprocess (pps ppx_jane)))
