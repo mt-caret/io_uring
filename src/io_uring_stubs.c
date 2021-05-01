@@ -110,7 +110,7 @@ CAMLprim value io_uring_prep_nop_stub(value v_io_uring, value v_sqe_flags, value
     return Val_bool(true);
   } else {
     io_uring_prep_nop(sqe);
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
@@ -128,7 +128,7 @@ CAMLprim value io_uring_prep_write_stub(value v_io_uring, value v_sqe_flags, val
                         get_bstr(v_bstr, v_pos),
                         (unsigned) Long_val(v_len),
                         (off_t) Long_val(v_offset));
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
@@ -151,7 +151,7 @@ CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_sqe_flags, valu
                         get_bstr(v_bstr, v_pos),
                         (unsigned) Long_val(v_len),
                         (off_t) Long_val(v_offset));
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
@@ -207,7 +207,7 @@ CAMLprim value io_uring_prep_writev_stub(value v_io_uring, value v_sqe_flags, va
                         user_data->iovecs,
                         count,
                         (off_t) Long_val(v_offset));
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *) user_data);
     return Val_bool(false);
@@ -240,7 +240,7 @@ CAMLprim value io_uring_prep_readv_stub(value v_io_uring, value v_sqe_flags, val
                         user_data->iovecs,
                         count,
                         (off_t) Long_val(v_offset));
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *) user_data);
     return Val_bool(false);
@@ -263,7 +263,7 @@ CAMLprim value io_uring_prep_send_stub(value v_io_uring, value v_sqe_flags, valu
                         get_bstr(v_bstr, v_pos),
                         (unsigned) Long_val(v_len),
                         0);
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
@@ -286,7 +286,7 @@ CAMLprim value io_uring_prep_recv_stub(value v_io_uring, value v_sqe_flags, valu
                         get_bstr(v_bstr, v_pos),
                         (unsigned) Long_val(v_len),
                         0);
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
@@ -303,7 +303,7 @@ CAMLprim value io_uring_prep_close_stub(value v_io_uring, value v_sqe_flags, val
     return Val_bool(true);
   } else {
     io_uring_prep_close(sqe, (int) Long_val(v_fd));
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
   }
@@ -337,7 +337,7 @@ CAMLprim value io_uring_prep_accept_stub(value v_io_uring, value v_sqe_flags, va
 
     // TODO: support accept4() flags?
     io_uring_prep_accept(sqe, (int) Long_val(v_fd), &(p->addr.s_gen), &(p->addr_len), 0);
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     io_uring_sqe_set_data(sqe, (void *) user_data);
 
     v = caml_alloc(1, Abstract_tag);
@@ -382,7 +382,7 @@ CAMLprim value io_uring_prep_poll_add_stub(value v_io_uring, value v_sqe_flags, 
     io_uring_prep_poll_add(sqe,
                           (int) Long_val(v_fd),
                           (short) Int63_val(v_flags));
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     // debug: printf("user_data: %d\n", v_user_data);
     io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
     return Val_bool(false);
@@ -405,7 +405,7 @@ CAMLprim value io_uring_prep_poll_remove_stub(value v_io_uring, value v_sqe_flag
     // debug: printf("poll_remove: tag: %llx, %llx\n", v_a, User_data_val(v_a));
     io_uring_prep_poll_remove((struct io_uring_sqe *) Data_abstract_val(sqe),
                               (void *)(uintptr_t) v_user_data);
-    sqe->flags |= Int63_val(v_sqe_flags);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
     io_uring_sqe_set_data(sqe, NULL);
     return Val_bool(false);
   }
