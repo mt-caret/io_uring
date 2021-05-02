@@ -62,6 +62,12 @@ module Sqe_flags : sig
   val buffer_select : t
 end
 
+module Queued_sockaddr : sig
+  type t
+
+  val thread_unsafe_get : t -> Unix.sockaddr option
+end
+
 type 'a t
 
 val create : max_submission_entries:int -> max_completion_entries:int -> _ t
@@ -139,8 +145,17 @@ val prepare_recv
   -> 'a
   -> bool
 
+val prepare_sendmsg
+  :  'a t
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> 'a
+  -> bool
+
 (* TODO: test *)
 val prepare_close : 'a t -> Sqe_flags.t -> File_descr.t -> 'a -> bool
+val prepare_accept : 'a t -> Sqe_flags.t -> File_descr.t -> 'a -> Queued_sockaddr.t option
 
 (** [poll_add] adds a file descriptor to listen to to the submission queue,
     and will take effect when [submit] is called. It returns an

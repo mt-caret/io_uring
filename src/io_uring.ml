@@ -87,6 +87,13 @@ module Sqe_flags = struct
   end)
 end
 
+module Queued_sockaddr = struct
+  type t
+
+  external thread_unsafe_get : t -> Unix.sockaddr option = "io_uring_get_sockaddr"
+  external unsafe_free : t -> unit = "io_uring_free_sockaddr"
+end
+
 (* TOIMPL: flesh out the interface here *)
 type _ io_uring
 
@@ -180,6 +187,17 @@ external prepare_recv
   = "io_uring_prep_recv_bytecode_stub" "io_uring_prep_recv_stub"
   [@@noalloc]
 
+external prepare_sendmsg
+  :  'a io_uring
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> count:int
+  -> user_data:int
+  -> bool
+  = "io_uring_prep_sendmsg_bytecode_stub" "io_uring_prep_sendmsg_stub"
+  [@@noalloc]
+
 external prepare_close
   :  'a io_uring
   -> Sqe_flags.t
@@ -188,6 +206,14 @@ external prepare_close
   -> bool
   = "io_uring_prep_close_stub"
   [@@noaloc]
+
+external prepare_accept
+  :  'a io_uring
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> user_data:int
+  -> Queued_sockaddr.t option
+  = "io_uring_prep_accept_stub"
 
 external prepare_poll_add
   :  'a io_uring
@@ -246,7 +272,7 @@ let alloc_user_data (type a) (t : a t) (a : a) sq_full =
   then (
     assert (t.head <> -1);
     let next_index = t.freelist.(t.head) in
-    (*print_s [%message "alloc_user_data" (t.head : int) (next_index : int)];*)
+    (* print_s [%message "alloc_user_data" (t.head : int) (next_index : int)]; *)
     t.freelist.(t.head) <- -1;
     t.user_data.(t.head) <- a;
     t.head <- (if next_index = t.head then -1 else next_index));
@@ -254,6 +280,7 @@ let alloc_user_data (type a) (t : a t) (a : a) sq_full =
 ;;
 
 let free_user_data t index =
+  (* print_s [%message "free_user_data" (t.head : int) (index : int)]; *)
   t.freelist.(index) <- (if t.head = -1 then index else t.head);
   t.head <- index;
   t.user_data.(index) <- Obj.magic 0
@@ -352,9 +379,28 @@ let prepare_recv t sqe_flags fd ?(pos = 0) ?len bstr a =
   |> alloc_user_data t a
 ;;
 
+let prepare_sendmsg t sqe_flags fd iovecs a =
+  are_slots_full t
+  ||
+  let count = Array.length iovecs in
+  prepare_sendmsg t.io_uring sqe_flags fd iovecs ~count ~user_data:t.head
+  |> alloc_user_data t a
+;;
+
 let prepare_close t sqe_flags fd a =
   are_slots_full t
   || prepare_close t.io_uring sqe_flags fd ~user_data:t.head |> alloc_user_data t a
+;;
+
+let prepare_accept t sqe_flags fd a =
+  if are_slots_full t
+  then None
+  else (
+    let res = prepare_accept t.io_uring sqe_flags fd ~user_data:t.head in
+    Option.iter res ~f:(fun queued_sockaddr ->
+        Gc.Expert.add_finalizer_exn queued_sockaddr Queued_sockaddr.unsafe_free);
+    ignore (alloc_user_data t a (Option.is_none res) : bool);
+    res)
 ;;
 
 let prepare_poll_add t sqe_flags fd flags a =
