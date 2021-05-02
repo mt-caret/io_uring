@@ -66,11 +66,6 @@ module User_data = struct
   let create = Fields.create
 end
 
-let submit io_uring =
-  let ret = Io_uring.submit io_uring in
-  if ret < 0 then Unix.unix_error (-ret) "Io_uring.submit" ""
-;;
-
 let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
   let sqe_flags = Io_uring.Sqe_flags.none in
   let offset = ref 0 in
@@ -92,7 +87,7 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
       incr read_submissions;
       submitted := true
     done;
-    if !submitted then submit io_uring;
+    if !submitted then ignore (Io_uring.submit io_uring : int);
     (* Queue is full at this point. Find at least one completion *)
     let first_completion = ref true in
     let got_completion = ref true in

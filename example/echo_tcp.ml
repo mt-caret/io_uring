@@ -30,11 +30,6 @@ module User_data = struct
   ;;
 end
 
-let submit io_uring =
-  let ret = Io_uring.submit io_uring in
-  if ret < 0 then Unix.unix_error (-ret) "Io_uring.submit" ""
-;;
-
 let run ~queue_depth ~port ~backlog ~max_message_len =
   let sockfd = Unix.socket ~domain:PF_INET ~kind:SOCK_STREAM ~protocol:0 () in
   Unix.setsockopt sockfd SO_REUSEADDR true;
@@ -50,7 +45,7 @@ let run ~queue_depth ~port ~backlog ~max_message_len =
   let prepare = User_data.prepare ~io_uring ~sockfd ~queued_sockaddr_ref in
   prepare User_data.Accept;
   while true do
-    submit io_uring;
+    let (_ : int) = Io_uring.submit io_uring in
     Io_uring.wait io_uring ~timeout:`Never;
     Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags ->
         print_s [%message "" (user_data : User_data.t) (res : int) (flags : int)];
