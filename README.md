@@ -24,7 +24,7 @@ TODO
 - [ ] add tests
 - [ ] create default value with `Obj.magic` and check for emptiness in `user_data` array via `phys_equal` in invariant
 - [ ] properly allocate `io_uring`
-- [ ] test `prep_send`/`prep_recv` with httpaf?
+- [x] test `prep_send`/`prep_recv` with httpaf?
 - [x] check for errno in library
 - [x] add ``Wait_for_num_completions of int` to `Io_uring.wait`
 - [x] allocate Queued_sockaddr on the heap
