@@ -488,9 +488,8 @@ CAMLprim value io_uring_wait_stub(value v_io_uring, value v_array, value v_timeo
       uerror("io_uring_peek_cqe (if branch)", Nothing);
     }
   } else if (timeout < 0) {
-
     caml_enter_blocking_section();
-    retcode = io_uring_wait_cqe(io_uring, &cqe);
+    retcode = io_uring_wait_cqe_nr(io_uring, &cqe, -timeout);
     caml_leave_blocking_section();
 
     if (retcode < 0) uerror("io_uring_wait_cqe", Nothing);

@@ -178,7 +178,11 @@ val submit : 'a t -> int
     then returns the tag given to it by [poll_add] and 0 if it has timed out.
     passing in 0 for [~timeout] will cause it return immediately, and a
     negative value will cause it to wait indefinitely. *)
-val wait : 'a t -> timeout:[ `Never | `Immediately | `After of Time_ns.Span.t ] -> unit
+val wait
+  :  'a t
+  -> timeout:
+       [ `Never | `Immediately | `After of Time_ns.Span.t | `Until_completions of int ]
+  -> unit
 
 val wait_timeout_after : 'a t -> Time_ns.Span.t -> unit
 val iter_completions : 'a t -> f:(user_data:'a -> res:int -> flags:int -> unit) -> unit

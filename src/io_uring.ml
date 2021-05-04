@@ -252,6 +252,10 @@ let wait_timeout_after t buffer span =
 let wait t buffer ~timeout =
   match timeout with
   | `Never -> wait_internal t buffer ~timeout:(Int63.of_int (-1))
+  | `Until_completions n ->
+    if n < 0
+    then raise_s [%message "`At_least_num_completions must be greater than 0" (n : int)];
+    wait_internal t buffer ~timeout:(Int63.of_int (-n))
   | `Immediately -> wait_internal t buffer ~timeout:Int63.zero
   | `After span -> wait_timeout_after t buffer span
 ;;
