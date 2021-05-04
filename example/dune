@@ -21,3 +21,9 @@
   (modules http)
   (libraries core httpaf io_uring)
   (preprocess (pps ppx_jane)))
+
+(executables
+  (names promise)
+  (modules promise)
+  (libraries core io_uring)
+  (preprocess (pps ppx_jane)))
