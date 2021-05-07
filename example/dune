@@ -25,5 +25,5 @@
 (executables
   (names promise)
   (modules promise)
-  (libraries core io_uring)
+  (libraries core httpaf io_uring)
   (preprocess (pps ppx_jane)))
