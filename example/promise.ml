@@ -1,6 +1,6 @@
 open Core
 
-let queue_depth = 2048
+let queue_depth = 4096
 
 module Promise : sig
   type 'a t
@@ -30,9 +30,19 @@ module Promise : sig
 
   include Monad.S with type 'a t := 'a t
 end = struct
+  module Cell = struct
+    type 'a t =
+      { mutable cell : 'a option
+      ; mutable callback : ('a -> unit) list
+      }
+    [@@deriving sexp, fields]
+
+    let create = Fields.create
+  end
+
   module User_data = struct
     type t =
-      | Resolved : ('a * ('a -> unit)) -> t
+      | Resolve : ('a * 'a Cell.t) -> t
       | Accept :
           { fd : Unix.File_descr.t
                 (* TODO: the fact that we need to carry around a mutable reference to
@@ -67,9 +77,10 @@ end = struct
     ;;
 
     let prepare t =
+      print_s [%message "prepare" (t : t)];
       let io_uring = force io_uring in
       match t with
-      | Resolved _ ->
+      | Resolve _ ->
         let sq_full = Io_uring.prepare_nop io_uring Io_uring.Sqe_flags.none t in
         if sq_full then raise_s [%message "promise: submission queue is full"]
       | Accept accept ->
@@ -104,7 +115,8 @@ end = struct
             if debug
             then print_s [%message "completion" (user_data : t) (res : int) (flags : int)];
             match user_data with
-            | Resolved (x, f) -> f x
+            | Resolve (x, cell) ->
+              Cell.callback cell |> List.rev |> List.iter ~f:(fun f -> f x)
             | Accept { fd = _; queued_sockaddr; resolve } ->
               process_res res
               |> Result.map ~f:(fun res ->
@@ -121,30 +133,26 @@ end = struct
               |> resolve
             | Recv { resolve; _ } -> process_res res |> resolve
             | Sendmsg { resolve; _ } -> process_res res |> resolve);
+        let n = Io_uring.num_completions io_uring in
+        print_s [%message "completions" (n : int)];
         Io_uring.clear_completions io_uring
       done
     ;;
   end
 
-  module Cell = struct
-    type 'a t =
-      | Empty of ('a -> unit)
-      | Full of 'a
-  end
-
   module T = struct
-    type 'a t = 'a Cell.t ref
+    type 'a t = 'a Cell.t [@@deriving sexp]
+
+    let peek = Cell.cell
 
     let resolve t x =
-      match !t with
-      | Cell.Empty f ->
-        t := Full x;
-        User_data.prepare (Resolved (x, f))
-      | Full _ -> raise_s [%message "attempted to fill fulfulled process"]
+      match peek t with
+      | None -> User_data.prepare (Resolve (x, t))
+      | Some _ -> raise_s [%message "attempted to fill fulfulled process"]
     ;;
 
     let create ~f =
-      let t = ref (Cell.Empty ignore) in
+      let t = Cell.create ~cell:None ~callback:[] in
       f ~resolve:(resolve t);
       t
     ;;
@@ -152,20 +160,9 @@ end = struct
     let never () = create ~f:(fun ~resolve:_ -> ())
 
     let upon t ~f =
-      match !t with
-      | Cell.Empty g ->
-        let g' x =
-          g x;
-          f x
-        in
-        t := Empty g'
-      | Full x -> f x
-    ;;
-
-    let peek t =
-      match !t with
-      | Cell.Empty _ -> None
-      | Full x -> Some x
+      match peek t with
+      | None -> t.callback <- f :: t.callback
+      | Some x -> f x
     ;;
 
     let run ?debug t =
@@ -190,19 +187,22 @@ end = struct
           User_data.Sendmsg { fd; iovecs; resolve } |> User_data.prepare)
     ;;
 
-    let return x = ref (Cell.Full x)
+    let return x =
+      let t = Cell.create ~cell:None ~callback:[] in
+      resolve t x;
+      t
+    ;;
 
     let map t ~f =
-      match !t with
-      | Cell.Empty _ -> create ~f:(fun ~resolve -> upon t ~f:(fun x -> resolve (f x)))
-      | Full x -> return (f x)
+      match peek t with
+      | None -> create ~f:(fun ~resolve -> upon t ~f:(fun x -> resolve (f x)))
+      | Some x -> return (f x)
     ;;
 
     let bind t ~f =
-      match !t with
-      | Cell.Empty g ->
-        create ~f:(fun ~resolve -> upon t ~f:(fun x -> upon (f x) ~f:resolve))
-      | Full x -> f x
+      match peek t with
+      | None -> create ~f:(fun ~resolve -> upon t ~f:(fun x -> upon (f x) ~f:resolve))
+      | Some x -> f x
     ;;
   end
 
@@ -296,6 +296,7 @@ module Buffer = struct
 end
 
 let rec accept_loop fd ~handle_connection =
+  print_s [%message "in accept_loop"];
   let open Promise.Let_syntax in
   let%bind result = Promise.accept fd in
   let%map () = accept_loop fd ~handle_connection
@@ -324,59 +325,60 @@ let run ?(config = Httpaf.Config.default) ~queue_depth ~port ~backlog ~debug () 
   let addr = Unix.ADDR_INET (Unix.Inet_addr.localhost, port) in
   Unix.bind sockfd ~addr;
   Unix.listen sockfd ~backlog;
-  Promise.run ~debug
-  @@ accept_loop sockfd ~handle_connection:(fun (fd, sockaddr) ->
-         let conn =
-           Handler.(
-             Httpaf.Server_connection.create ~config ~error_handler request_handler)
-         in
-         let buf = Buffer.create config.read_buffer_size in
-         let open Promise.Let_syntax in
-         let rec reader_thread () =
-           match Httpaf.Server_connection.next_read_operation conn with
-           | `Read ->
-             let%bind () =
-               Buffer.start_write buf ~f:(fun bigstring ~off ~len ->
-                   let%map result =
-                     Promise.recv fd ~pos:off ~len bigstring
-                     >>| unwrap_result ~name:"recv"
-                   in
-                   Buffer.finish_writing buf result;
-                   Buffer.read buf ~f:(fun bigstring ~off ~len ->
-                       if result = 0
-                       then Httpaf.Server_connection.read_eof conn bigstring ~off ~len
-                       else Httpaf.Server_connection.read conn bigstring ~off ~len))
-             in
-             reader_thread ()
-           | `Yield ->
-             let%bind () = return () in
-             reader_thread ()
-           | `Close ->
-             Unix.shutdown fd SHUTDOWN_RECEIVE;
-             return ()
-         in
-         let rec writer_thread () =
-           match Httpaf.Server_connection.next_write_operation conn with
-           | `Write iovecs ->
-             let%bind result =
-               to_core_iovec_array iovecs
-               |> Promise.sendmsg fd
-               >>| unwrap_result ~name:"sendmsg"
-             in
-             Httpaf.Server_connection.report_write_result
-               conn
-               (if result = 0 then `Closed else `Ok result);
-             writer_thread ()
-           | `Yield ->
-             let%bind () = return () in
-             writer_thread ()
-           | `Close _ ->
-             Unix.shutdown fd SHUTDOWN_SEND;
-             return ()
-         in
-         let%map () = reader_thread ()
-         and () = writer_thread () in
-         ())
+  accept_loop sockfd ~handle_connection:(fun (fd, sockaddr) ->
+      let conn =
+        Handler.(Httpaf.Server_connection.create ~config ~error_handler request_handler)
+      in
+      let buf = Buffer.create config.read_buffer_size in
+      let open Promise.Let_syntax in
+      let rec reader_thread () =
+        print_s [%message "in reader_thread loop"];
+        match Httpaf.Server_connection.next_read_operation conn with
+        | `Read ->
+          let%bind () =
+            Buffer.start_write buf ~f:(fun bigstring ~off ~len ->
+                let%map result =
+                  Promise.recv fd ~pos:off ~len bigstring >>| unwrap_result ~name:"recv"
+                in
+                print_s [%message "finished recv"];
+                Buffer.finish_writing buf result;
+                Buffer.read buf ~f:(fun bigstring ~off ~len ->
+                    if result = 0
+                    then Httpaf.Server_connection.read_eof conn bigstring ~off ~len
+                    else Httpaf.Server_connection.read conn bigstring ~off ~len))
+          in
+          reader_thread ()
+        | `Yield ->
+          let%bind () = return () in
+          reader_thread ()
+        | `Close ->
+          Unix.shutdown fd SHUTDOWN_RECEIVE;
+          return ()
+      in
+      let rec writer_thread () =
+        print_s [%message "in writer_thread loop"];
+        match Httpaf.Server_connection.next_write_operation conn with
+        | `Write iovecs ->
+          let%bind result =
+            to_core_iovec_array iovecs
+            |> Promise.sendmsg fd
+            >>| unwrap_result ~name:"sendmsg"
+          in
+          Httpaf.Server_connection.report_write_result
+            conn
+            (if result = 0 then `Closed else `Ok result);
+          writer_thread ()
+        | `Yield ->
+          let%bind () = return () in
+          writer_thread ()
+        | `Close _ ->
+          Unix.shutdown fd SHUTDOWN_SEND;
+          return ()
+      in
+      let%map () = reader_thread ()
+      and () = writer_thread () in
+      ())
+  |> Promise.run ~debug
 ;;
 
 let () =
