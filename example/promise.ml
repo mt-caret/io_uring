@@ -1,5 +1,8 @@
 open Core
 
+(* this is an implmentation of coroutines based on io_uring's event loop,
+ * along with a port of http.ml *)
+
 let queue_depth = 4096
 
 module Promise : sig
