@@ -341,6 +341,48 @@ CAMLprim value io_uring_prep_sendmsg_bytecode_stub(value *argv, int argn) {
   return io_uring_prep_sendmsg_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
 }
 
+CAMLprim value io_uring_prep_recvmsg_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_iovecs, value v_count, value v_user_data) {
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  // debug: puts("io_uring_prep_recvmsg_stub");
+  if (sqe == NULL) {
+    return Val_bool(true);
+  } else {
+    int count = Int_val(v_count);
+    size_t total_len = 0;
+
+    struct msghdr *msghdr = caml_stat_alloc(sizeof(struct msghdr));
+    msghdr->msg_name = (void *) NULL;
+    msghdr->msg_namelen = 0;
+    msghdr->msg_iov = copy_iovecs(&total_len, v_iovecs, count);
+    msghdr->msg_iovlen = count;
+    msghdr->msg_control = (void *) NULL;
+    msghdr->msg_controllen = 0;
+    msghdr->msg_flags = 0;
+
+    assert(Is_long(v_user_data));
+    struct tagged_immediate* user_data =
+      caml_stat_alloc(sizeof(struct tagged_immediate));
+    assert(Is_block((uintptr_t)user_data));
+    user_data->tag_type = MSGHDR;
+    user_data->msghdr = msghdr;
+    user_data->immediate = v_user_data;
+
+    // TODO: possibly pass some flags to recv()?
+    io_uring_prep_recvmsg(sqe,
+                        (int) Long_val(v_fd),
+                        msghdr,
+                        0);
+    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
+    // debug: printf("user_data: %d\n", v_user_data);
+    io_uring_sqe_set_data(sqe, (void *) user_data);
+    return Val_bool(false);
+  }
+}
+
+CAMLprim value io_uring_prep_recvmsg_bytecode_stub(value *argv, int argn) {
+  return io_uring_prep_recvmsg_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5]);
+}
+
 CAMLprim value io_uring_prep_close_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_user_data) {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
   if (sqe == NULL) {

@@ -153,6 +153,14 @@ val prepare_sendmsg
   -> 'a
   -> bool
 
+val prepare_recvmsg
+  :  'a t
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> 'a
+  -> bool
+
 (* TODO: test *)
 val prepare_close : 'a t -> Sqe_flags.t -> File_descr.t -> 'a -> bool
 val prepare_accept : 'a t -> Sqe_flags.t -> File_descr.t -> 'a -> Queued_sockaddr.t option

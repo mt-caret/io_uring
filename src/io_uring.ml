@@ -198,6 +198,17 @@ external prepare_sendmsg
   = "io_uring_prep_sendmsg_bytecode_stub" "io_uring_prep_sendmsg_stub"
   [@@noalloc]
 
+external prepare_recvmsg
+  :  'a io_uring
+  -> Sqe_flags.t
+  -> File_descr.t
+  -> Bigstring.t IOVec.t array
+  -> count:int
+  -> user_data:int
+  -> bool
+  = "io_uring_prep_recvmsg_bytecode_stub" "io_uring_prep_recvmsg_stub"
+  [@@noalloc]
+
 external prepare_close
   :  'a io_uring
   -> Sqe_flags.t
@@ -388,6 +399,14 @@ let prepare_sendmsg t sqe_flags fd iovecs a =
   ||
   let count = Array.length iovecs in
   prepare_sendmsg t.io_uring sqe_flags fd iovecs ~count ~user_data:t.head
+  |> alloc_user_data t a
+;;
+
+let prepare_recvmsg t sqe_flags fd iovecs a =
+  are_slots_full t
+  ||
+  let count = Array.length iovecs in
+  prepare_recvmsg t.io_uring sqe_flags fd iovecs ~count ~user_data:t.head
   |> alloc_user_data t a
 ;;
 
