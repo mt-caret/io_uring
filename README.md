@@ -30,3 +30,10 @@ TODO
 - [x] allocate Queued_sockaddr on the heap
 - [ ] add buffer provision support (and add it in echo server)
 - [ ] keep track of in-flight requests and apply backpressure so completion queue never overflows?
+  - backpressure is interesting. Even though we can straightforwardly keep
+    track of in-flight requests and make sure we never submit more than the
+    number of free slots in the completion queue, this may result in starvation
+    when we submit many requests which may have unbounded completion times
+    (like accept or poll). We probably need to think about
+    [IORING_SETUP_CQ_NODROP](https://lore.kernel.org/io-uring/20191106235307.32196-1-axboe@kernel.dk/T/)
+    and clearly document behavior around this.
