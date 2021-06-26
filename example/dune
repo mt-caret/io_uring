@@ -27,6 +27,13 @@
   (pps ppx_jane)))
 
 (executables
+ (names wrap_deferred)
+ (modules wrap_deferred)
+ (libraries core httpaf io_uring async)
+ (preprocess
+  (pps ppx_jane)))
+
+(executables
  (names promise)
  (modules promise)
  (libraries core httpaf io_uring)

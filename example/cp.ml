@@ -257,7 +257,7 @@ let () =
          Unix.openfile ~perm:0o644 ~mode:Unix.[ O_WRONLY; O_CREAT; O_TRUNC ] outfile
        in
        let io_uring =
-         Io_uring.create ~max_submission_entries:queue_depth ~max_completion_entries:128
+         Io_uring.create ~max_submission_entries:queue_depth ~max_completion_entries:256
        in
        let insize = get_file_size infd in
        if debug
