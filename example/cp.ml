@@ -131,9 +131,8 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug:_ ~use_non_v =
       if !got_completion
       then (
         Io_uring.clear_completions io_uring;
-        ignore(Io_uring.submit io_uring : int);
-        ()
-      )
+        ignore (Io_uring.submit io_uring : int);
+        ())
     done
   done;
   (* wait out pending writes *)
@@ -187,7 +186,7 @@ let copy_file_with_linking ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
               (user_data : User_data.t)
               (!submissions : int)
               (!bytes_to_issue : int)];
-      let { User_data.buf; offset; len; kind = _; pos = _} = user_data in
+      let { User_data.buf; offset; len; kind = _; pos = _ } = user_data in
       prepare_linked_read_write_pair ~buf ~offset ~len;
       submissions := !submissions + 2)
     else if res < 0
@@ -217,7 +216,8 @@ let copy_file_with_linking ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
       submissions := !submissions + 2;
       submitted := true
     done;
-    if !submitted then ignore(Io_uring.submit io_uring : int); (* TODO: These should not be ignored, but it's just a simple example *)
+    if !submitted then ignore (Io_uring.submit io_uring : int);
+    (* TODO: These should not be ignored, but it's just a simple example *)
     let depth = if !bytes_to_issue > 0 then queue_depth else 1 in
     while !submissions >= depth do
       Io_uring.wait io_uring ~timeout:`Immediately;

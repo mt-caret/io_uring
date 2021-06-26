@@ -330,7 +330,8 @@ let create ~max_submission_entries ~max_completion_entries =
       Bigstring.init (sizeof_io_uring_cqe * max_completion_entries) ~f:(Fn.const 'A')
   ; completions = 0
   ; head = 0
-  ; freelist = Array.init user_data_slots ~f:(fun i -> Int.min (i + 1) (user_data_slots - 1))
+  ; freelist =
+      Array.init user_data_slots ~f:(fun i -> Int.min (i + 1) (user_data_slots - 1))
   ; user_data = Array.init user_data_slots ~f:(fun _ -> Obj.magic 0)
   }
 ;;
