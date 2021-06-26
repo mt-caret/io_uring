@@ -96,17 +96,6 @@ val prepare_read
   -> 'a
   -> bool
 
-val prepare_write
-  :  'a t
-  -> Sqe_flags.t
-  -> File_descr.t
-  -> ?pos:int
-  -> ?len:int
-  -> Bigstring.t
-  -> offset:int
-  -> 'a
-  -> bool
-
 val prepare_writev
   :  'a t
   -> Sqe_flags.t

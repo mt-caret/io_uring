@@ -65,7 +65,7 @@ let run ~queue_depth ~port ~backlog ~max_message_len =
           (* TODO: fix handling? *)
           if res < 0 then Unix.unix_error (-res) "Io_uring.recv" "";
           if res = 0
-          then Unix.shutdown fd SHUTDOWN_ALL
+          then Unix.shutdown fd ~mode:SHUTDOWN_ALL
           else User_data.Send (fd, buf, 0, res) |> prepare
         | Send (fd, buf, off, len) ->
           if res < 0 then Unix.unix_error (-res) "Io_uring.send" "";

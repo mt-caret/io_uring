@@ -311,7 +311,7 @@ external io_uring_offsetof_res : unit -> int = "io_uring_offsetof_res" [@@noallo
 external io_uring_offsetof_flags : unit -> int = "io_uring_offsetof_flags" [@@noalloc]
 
 let sizeof_io_uring_cqe = io_uring_sizeof_io_uring_cqe ()
-let offsetof_user_data = io_uring_offsetof_user_data ()
+let _offsetof_user_data = io_uring_offsetof_user_data ()
 let offsetof_res = io_uring_offsetof_res ()
 let offsetof_flags = io_uring_offsetof_flags ()
 
@@ -327,11 +327,11 @@ let create ~max_submission_entries ~max_completion_entries =
   let user_data_slots = max_submission_entries + max_completion_entries in
   { io_uring = create ~max_submission_entries ~max_completion_entries
   ; completion_buffer =
-      Bigstring.init (sizeof_io_uring_cqe * max_completion_entries) (Fn.const 'A')
+      Bigstring.init (sizeof_io_uring_cqe * max_completion_entries) ~f:(Fn.const 'A')
   ; completions = 0
   ; head = 0
-  ; freelist = Array.init user_data_slots (fun i -> Int.min (i + 1) (user_data_slots - 1))
-  ; user_data = Array.init user_data_slots (fun _ -> Obj.magic 0)
+  ; freelist = Array.init user_data_slots ~f:(fun i -> Int.min (i + 1) (user_data_slots - 1))
+  ; user_data = Array.init user_data_slots ~f:(fun _ -> Obj.magic 0)
   }
 ;;
 
@@ -445,13 +445,13 @@ let prepare_poll_remove t sqe_flags tag =
 (* TOIMPL: add invariant that num_in_flight is always >= 0? *)
 let submit t = submit t.io_uring
 
-(* submit is automatcally called here, so I don't think it's possible to
+(* submit is automatically called here, so I don't think it's possible to
  * accurately keep track of in-flight requests if we use liburing *)
 let wait_timeout_after t span =
   t.completions <- wait_timeout_after t.io_uring t.completion_buffer span
 ;;
 
-let wait t ~timeout = t.completions <- wait t.io_uring t.completion_buffer timeout
+let wait t ~timeout = t.completions <- wait t.io_uring t.completion_buffer ~timeout
 
 external io_uring_get_user_data : Bigstring.t -> int -> int = "io_uring_get_user_data"
   [@@noalloc]

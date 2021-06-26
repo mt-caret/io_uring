@@ -26,6 +26,26 @@
 #define Bytes_val String_val
 #endif
 
+#ifndef Val_some
+static value Val_some(value mlvalue) {
+    CAMLparam1(mlvalue);
+    CAMLlocal1(aout);
+
+    aout = caml_alloc(1, 0);
+    Store_field(aout, 0, mlvalue);
+
+    CAMLreturn(aout);
+}
+#endif
+
+#ifndef Val_none
+#define Val_none Val_int(0)
+#endif
+
+#ifndef Some_val
+#define Some_val(v) Field(v, 0)
+#endif
+
 /** Core io_uring methods **/
 
 #define POLL_FLAG(FLAG) DEFINE_INT63_CONSTANT (poll_##FLAG##_flag, FLAG)
@@ -429,7 +449,7 @@ CAMLprim value io_uring_prep_accept_stub(value v_io_uring, value v_sqe_flags, va
     v = caml_alloc(1, Abstract_tag);
     Queued_sockaddr_val(v) = user_data;
 
-    CAMLreturn(caml_alloc_some(v));
+    CAMLreturn(Val_some(v));
   }
 }
 
@@ -444,7 +464,7 @@ CAMLprim value io_uring_get_sockaddr(value v_queued_sockaddr) {
 
   struct queued_sockaddr *q = p->sockaddr;
   if (q->completed) {
-    CAMLreturn(caml_alloc_some(alloc_sockaddr(&(q->addr), q->addr_len, q->retcode)));
+    CAMLreturn(Val_some(alloc_sockaddr(&(q->addr), q->addr_len, q->retcode)));
   } else {
     CAMLreturn(Val_none);
   }
