@@ -13,12 +13,10 @@ module Ring = struct
   ;;
 
   let wait t =
-    printf "Submit %i\n" (Io_uring.submit t.ring);
+    let _submitted = Io_uring.submit t.ring in
     Stdio.Out_channel.flush Stdio.Out_channel.stdout;
     Io_uring.wait t.ring ~timeout:`Never;
-    printf "Done wait\n";
     Io_uring.iter_completions t.ring ~f:(fun ~user_data ~res ~flags ->
-        printf "Completion\n";
         user_data res flags);
     Io_uring.clear_completions t.ring;
     ()
@@ -37,7 +35,6 @@ module Deferred = struct
     let rec new_t =
       { begin_ =
           (fun () ->
-            printf "Scheduled thing executed\n";
             creater_fun (fun result ->
                 match new_t.then_ with
                 | Some v -> v result
@@ -65,9 +62,7 @@ module Scheduler = struct
   let poll t = Ring.wait t.ring
 
   let do_work t =
-    Queue.iter t.worklist ~f:(fun x ->
-        printf "Executing a thing\n";
-        x ());
+    Queue.iter t.worklist ~f:(fun x -> x ());
     Queue.clear t.worklist
   ;;
 
@@ -86,7 +81,6 @@ module Socket = struct
   let make fd = { fd }
 
   let accept t =
-    printf "Accept\n";
     Deferred.create (fun result_fn ->
         ignore
           (Io_uring.prepare_accept
@@ -94,9 +88,8 @@ module Socket = struct
              Io_uring.Sqe_flags.none
              t.fd
              (fun res _flags ->
-               printf "Accept callback\n";
                let accept_result =
-                 if res = -1 then `Eof else `Ok (make (File_descr.of_int res))
+                 if res = -1 then `Error else `Ok (make (File_descr.of_int res))
                in
                result_fn accept_result)
             : Io_uring.Queued_sockaddr.t option)
@@ -167,7 +160,6 @@ let run ~port ~backlog =
       (Deferred.bind (Socket.accept server_socket) (fun new_socket ->
            match new_socket with
            | `Ok new_socket ->
-             printf "Got new socket\n";
              Scheduler.schedule Scheduler.global (reader_writer new_socket);
              accept_fn ()
            | `Eof | `Error ->
@@ -177,7 +169,4 @@ let run ~port ~backlog =
   Scheduler.block_forever Scheduler.global
 ;;
 
-let () =
-  let _deferred_scheduler = run ~port:8000 ~backlog:64 in
-  ()
-;;
+let () = run ~port:8000 ~backlog:64
