@@ -28,7 +28,7 @@ CAMLprim value io_uring_queue_init_stub(value v_submission_entries, value v_comp
   CAMLlocal1(v_io_uring);
 
   memset(&p, 0, sizeof(p));
-  p.flags = IORING_SETUP_CQSIZE;
+  p.flags = IORING_SETUP_CQSIZE | IORING_FEAT_RW_CUR_POS;
   p.cq_entries = Int_val(v_completion_entries);
 
   struct io_uring *io_uring = caml_stat_alloc(sizeof(struct io_uring));
