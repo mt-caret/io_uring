@@ -113,6 +113,20 @@ external prepare_nop
   = "io_uring_prep_nop_stub"
   [@@noalloc]
 
+external prepare_open
+  :  'a io_uring
+  -> Sqe_flags.t
+  -> string
+  -> flags:int
+  -> mode:int
+  -> Bigstring.t
+  -> pos:int
+  -> len:int
+  -> user_data:int
+  -> bool
+  = "io_uring_prep_open_bytecode_stub" "io_uring_prep_open_stub"
+  [@@noalloc]
+
 external prepare_write
   :  'a io_uring
   -> Sqe_flags.t
@@ -349,6 +363,15 @@ let prepare_write t sqe_flags fd ?(pos = 0) ?len bstr ~offset a =
   let len = Bigstring.get_opt_len bstr ~pos len in
   Bigstring.check_args ~loc:"io_uring.write" ~pos ~len bstr;
   prepare_write t.io_uring sqe_flags fd ~pos ~len bstr ~offset ~user_data:t.head
+  |> alloc_user_data t a
+;;
+
+let prepare_open t sqe_flags ~filepath ~flags ~mode bstr a =
+  are_slots_full t
+  ||
+  let len = Bigstring.get_opt_len bstr ~pos:0 (Some 32) in
+  Bigstring.check_args ~loc:"io_uring.open" ~pos:0 ~len:32 bstr;
+  prepare_open t.io_uring sqe_flags filepath ~flags ~mode bstr ~pos:0 ~len ~user_data:t.head
   |> alloc_user_data t a
 ;;
 

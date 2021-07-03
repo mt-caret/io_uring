@@ -1,4 +1,5 @@
 #include "io_uring_stubs.h"
+#include <fcntl.h>
 
 CAMLprim value io_uring_sizeof_io_uring_cqe(value __unused v_unit)
 {
@@ -69,6 +70,33 @@ CAMLprim value io_uring_prep_nop_stub(value v_io_uring, value v_sqe_flags, value
   return Val_bool(false);
 }
 
+CAMLprim value io_uring_prep_open_stub(value v_io_uring, value v_sqe_flags, value v_path, value v_flags, value v_mode, value v_bstr, value v_bstr_pos, value v_bstr_len, value v_user_data)
+{
+  struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+
+  if (sqe == NULL) {
+    return Val_bool(true);
+  }
+
+  assert(v_bstr_len >= sizeof(struct open_how));
+
+  struct open_how* flags = (struct open_how*) get_bstr(v_bstr, v_bstr_pos);
+
+  io_uring_prep_openat2(sqe, AT_FDCWD, String_val(v_path), flags);
+  io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
+
+  debug("user_data: %d\n", v_user_data);
+
+  io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
+
+  return Val_bool(false);
+}
+
+CAMLprim value io_uring_prep_open_bytecode_stub(value *argv, int argn)
+{
+  return io_uring_prep_open_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], argv[8]);
+}
+
 CAMLprim value io_uring_prep_write_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_pos, value v_len, value v_bstr, value v_offset, value v_user_data)
 {
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
@@ -97,22 +125,23 @@ CAMLprim value io_uring_prep_write_bytecode_stub(value *argv, int argn)
   return io_uring_prep_write_stub(argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], argv[7]);
 }
 
-CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_pos, value v_len, value v_bstr, value v_offset, value v_user_data)
-{
+CAMLprim value io_uring_prep_read_stub(value v_io_uring, value v_sqe_flags, value v_fd, value v_pos, value v_len, value v_bstr, value v_offset, value v_user_data) {
+
   struct io_uring_sqe *sqe = io_uring_get_sqe(Io_uring_val(v_io_uring));
+  
   if (sqe == NULL) {
     return Val_bool(true);
-  } else {
-    io_uring_prep_read(sqe,
-                        (int) Long_val(v_fd),
-                        get_bstr(v_bstr, v_pos),
-                        (unsigned) Long_val(v_len),
-                        (off_t) Long_val(v_offset));
-    io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
-    debug("user_data: %d\n", v_user_data);
-    io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
-    return Val_bool(false);
   }
+
+  io_uring_prep_read(sqe,
+                      (int) Long_val(v_fd),
+                      get_bstr(v_bstr, v_pos),
+                      (unsigned) Long_val(v_len),
+                      (off_t) Long_val(v_offset));
+  io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
+  debug("user_data: %d\n", v_user_data);
+  io_uring_sqe_set_data(sqe, (void *)(uintptr_t) v_user_data);
+  return Val_bool(false);
 }
 
 CAMLprim value io_uring_prep_read_bytecode_stub(value *argv, int argn)
