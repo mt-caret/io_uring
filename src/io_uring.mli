@@ -86,12 +86,14 @@ val prepare_write
   -> bool
 
 val prepare_open
-  : 'a t
-    -> Sqe_flags.t
-    -> filepath:string
-    -> flags:int
--> mode:int
--> Bigstring.t -> 'a -> bool
+  :  'a t
+  -> Sqe_flags.t
+  -> filepath:string
+  -> flags:int
+  -> mode:int
+  -> Bigstring.t
+  -> 'a
+  -> bool
 
 val prepare_read
   :  'a t

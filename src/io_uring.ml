@@ -371,7 +371,16 @@ let prepare_open t sqe_flags ~filepath ~flags ~mode bstr a =
   ||
   let len = Bigstring.get_opt_len bstr ~pos:0 (Some 32) in
   Bigstring.check_args ~loc:"io_uring.open" ~pos:0 ~len:32 bstr;
-  prepare_open t.io_uring sqe_flags filepath ~flags ~mode bstr ~pos:0 ~len ~user_data:t.head
+  prepare_open
+    t.io_uring
+    sqe_flags
+    filepath
+    ~flags
+    ~mode
+    bstr
+    ~pos:0
+    ~len
+    ~user_data:t.head
   |> alloc_user_data t a
 ;;
 
