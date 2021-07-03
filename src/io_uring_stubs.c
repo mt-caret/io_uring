@@ -82,6 +82,9 @@ CAMLprim value io_uring_prep_open_stub(value v_io_uring, value v_sqe_flags, valu
 
   struct open_how* flags = (struct open_how*) get_bstr(v_bstr, v_bstr_pos);
 
+  flags->flags = Long_val(v_flags);
+  flags->mode = Long_val(v_mode);
+
   io_uring_prep_openat2(sqe, AT_FDCWD, String_val(v_path), flags);
   io_uring_sqe_set_flags(sqe, Int63_val(v_sqe_flags));
 
