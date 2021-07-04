@@ -12,5 +12,5 @@
   (homepage "https://github.com/mt-caret/io_uring")
   (bug_reports "https://github.com/mt-caret/io_uring")
   (version 1.0)
-  (depends (core (>= "v0.14.1")) (ctypes (>= "0.17.1")) (ctypes-foreign (>= "0.18.0")) (ocaml (>= "4.08.0")))
+  (depends (core (>= "v0.14.1")) (ocaml (>= "4.08.0")))
 )
