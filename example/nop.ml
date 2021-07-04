@@ -5,7 +5,7 @@ let () =
   @@ Command.basic ~summary:"Naive benchmark of nop submssion to io_uring"
   @@ let%map_open.Command max_submission_entries =
        flag "sq-size" (optional_with_default 1024 int) ~doc:"INT size of submission queue"
-     and max_completion_entries =
+     and _max_completion_entries =
        flag "cq-size" (optional_with_default 1024 int) ~doc:"INT size of completion queue"
      in
      fun () ->
@@ -13,7 +13,7 @@ let () =
          Io_uring.create ~max_submission_entries ~max_completion_entries:1024
        in
        let start = Time_ns.now () in
-       for i = 1 to max_submission_entries do
+       for _i = 1 to max_submission_entries do
          let sq_full = Io_uring.prepare_nop io_uring Io_uring.Sqe_flags.none 0 in
          if sq_full then failwith "submission queue is full"
        done;

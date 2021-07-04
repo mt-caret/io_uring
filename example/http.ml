@@ -171,7 +171,7 @@ let run ?(config = Httpaf.Config.default) ~queue_depth ~port ~backlog () =
     | `Yield ->
       Httpaf.Server_connection.yield_reader conn (fun () ->
           User_data.Yield_reader { conn; fd; buf } |> prepare)
-    | `Close -> Unix.shutdown fd SHUTDOWN_RECEIVE
+    | `Close -> Unix.shutdown fd ~mode:SHUTDOWN_RECEIVE
   in
   let writer_thread ~conn ~fd =
     match Httpaf.Server_connection.next_write_operation conn with
@@ -180,7 +180,7 @@ let run ?(config = Httpaf.Config.default) ~queue_depth ~port ~backlog () =
     | `Yield ->
       Httpaf.Server_connection.yield_writer conn (fun () ->
           User_data.Yield_writer { conn; fd } |> prepare)
-    | `Close _ -> Unix.shutdown fd SHUTDOWN_SEND
+    | `Close _ -> Unix.shutdown fd ~mode:SHUTDOWN_SEND
   in
   while true do
     let (_ : int) = Io_uring.submit io_uring in

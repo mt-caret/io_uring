@@ -85,18 +85,17 @@ val prepare_write
   -> 'a
   -> bool
 
-val prepare_read
+val prepare_open
   :  'a t
   -> Sqe_flags.t
-  -> File_descr.t
-  -> ?pos:int
-  -> ?len:int
+  -> filepath:string
+  -> flags:int
+  -> mode:int
   -> Bigstring.t
-  -> offset:int
   -> 'a
   -> bool
 
-val prepare_write
+val prepare_read
   :  'a t
   -> Sqe_flags.t
   -> File_descr.t

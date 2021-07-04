@@ -66,7 +66,7 @@ module User_data = struct
   let create = Fields.create
 end
 
-let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
+let copy_file ~io_uring ~infd ~outfd ~insize ~debug:_ ~use_non_v =
   let sqe_flags = Io_uring.Sqe_flags.none in
   let offset = ref 0 in
   let bytes_to_issue_read = ref insize in
@@ -93,7 +93,7 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
     let got_completion = ref true in
     while !bytes_to_issue_write > 0 && !got_completion do
       Io_uring.wait io_uring ~timeout:(if !first_completion then `Never else `Immediately);
-      Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags ->
+      Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags:_ ->
           if res < 0
           then Unix.unix_error (-res) "Io_uring.read" [%string "%{user_data#User_data}"];
           match user_data.kind with
@@ -131,13 +131,14 @@ let copy_file ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
       if !got_completion
       then (
         Io_uring.clear_completions io_uring;
-        submit io_uring)
+        ignore (Io_uring.submit io_uring : int);
+        ())
     done
   done;
   (* wait out pending writes *)
   while !write_submissions > 0 do
     Io_uring.wait io_uring ~timeout:`Never;
-    Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags ->
+    Io_uring.iter_completions io_uring ~f:(fun ~user_data ~res ~flags:_ ->
         if res < 0
         then Unix.unix_error (-res) "Io_uring.read" [%string "%{user_data#User_data}"];
         match user_data.kind with
@@ -173,7 +174,7 @@ let copy_file_with_linking ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
   let offset = ref 0 in
   let bytes_to_issue = ref insize in
   let submissions = ref 0 in
-  let handle_submission ~user_data ~res ~flags =
+  let handle_submission ~user_data ~res ~flags:_ =
     if res = -125 (* ECANCELED *)
     then (
       if debug
@@ -185,7 +186,7 @@ let copy_file_with_linking ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
               (user_data : User_data.t)
               (!submissions : int)
               (!bytes_to_issue : int)];
-      let { User_data.buf; offset; len; kind = _ } = user_data in
+      let { User_data.buf; offset; len; kind = _; pos = _ } = user_data in
       prepare_linked_read_write_pair ~buf ~offset ~len;
       submissions := !submissions + 2)
     else if res < 0
@@ -215,7 +216,8 @@ let copy_file_with_linking ~io_uring ~infd ~outfd ~insize ~debug ~use_non_v =
       submissions := !submissions + 2;
       submitted := true
     done;
-    if !submitted then submit io_uring;
+    if !submitted then ignore (Io_uring.submit io_uring : int);
+    (* TODO: These should not be ignored, but it's just a simple example *)
     let depth = if !bytes_to_issue > 0 then queue_depth else 1 in
     while !submissions >= depth do
       Io_uring.wait io_uring ~timeout:`Immediately;
@@ -255,7 +257,7 @@ let () =
          Unix.openfile ~perm:0o644 ~mode:Unix.[ O_WRONLY; O_CREAT; O_TRUNC ] outfile
        in
        let io_uring =
-         Io_uring.create ~max_submission_entries:queue_depth ~max_completion_entries:128
+         Io_uring.create ~max_submission_entries:queue_depth ~max_completion_entries:256
        in
        let insize = get_file_size infd in
        if debug

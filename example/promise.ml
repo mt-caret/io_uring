@@ -103,7 +103,7 @@ end = struct
     ;;
 
     let process_res res =
-      if res < 0 then Error (Unix.Error.of_system_int (-res)) else Ok res
+      if res < 0 then Error (Unix.Error.of_system_int ~errno:(-res)) else Ok res
     ;;
 
     (* TODO: ideally, we should probably keep track of submissions and wait
@@ -322,13 +322,13 @@ let to_core_iovec_array (iovecs : Bigstring.t Faraday.iovec list) =
   |> List.to_array
 ;;
 
-let run ?(config = Httpaf.Config.default) ~queue_depth ~port ~backlog ~debug () =
+let run ?(config = Httpaf.Config.default) ~queue_depth:_ ~port ~backlog ~debug () =
   let sockfd = Unix.socket ~domain:PF_INET ~kind:SOCK_STREAM ~protocol:0 () in
   Unix.setsockopt sockfd SO_REUSEADDR true;
   let addr = Unix.ADDR_INET (Unix.Inet_addr.localhost, port) in
   Unix.bind sockfd ~addr;
   Unix.listen sockfd ~backlog;
-  accept_loop sockfd ~handle_connection:(fun (fd, sockaddr) ->
+  accept_loop sockfd ~handle_connection:(fun (fd, _sockaddr) ->
       let conn =
         Handler.(Httpaf.Server_connection.create ~config ~error_handler request_handler)
       in
@@ -355,7 +355,7 @@ let run ?(config = Httpaf.Config.default) ~queue_depth ~port ~backlog ~debug () 
           let%bind () = return () in
           reader_thread ()
         | `Close ->
-          Unix.shutdown fd SHUTDOWN_RECEIVE;
+          Unix.shutdown fd ~mode:SHUTDOWN_RECEIVE;
           return ()
       in
       let rec writer_thread () =
@@ -375,7 +375,7 @@ let run ?(config = Httpaf.Config.default) ~queue_depth ~port ~backlog ~debug () 
           let%bind () = return () in
           writer_thread ()
         | `Close _ ->
-          Unix.shutdown fd SHUTDOWN_SEND;
+          Unix.shutdown fd ~mode:SHUTDOWN_SEND;
           return ()
       in
       let%map () = reader_thread ()

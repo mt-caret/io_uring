@@ -2,10 +2,16 @@
  (name io_uring)
  (public_name io_uring)
  (libraries core)
- (c_names io_uring_stubs)
+ (foreign_stubs
+  (language c)
+  (names io_uring_stubs))
  (c_library_flags :standard -luring)
  (preprocessor_deps config.h)
- (preprocess (pps ppx_jane)))
+ (preprocess
+  (pps ppx_jane)))
 
-(rule (targets config.h) (deps)
- (action (bash "cp %{lib:jst-config:config.h} .")))
+(rule
+ (targets config.h)
+ (deps)
+ (action
+  (bash "cp %{lib:jst-config:config.h} .")))
