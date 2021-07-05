@@ -37,4 +37,4 @@ TODO
     (like accept or poll). We probably need to think about
     [IORING_SETUP_CQ_NODROP](https://lore.kernel.org/io-uring/20191106235307.32196-1-axboe@kernel.dk/T/)
     and clearly document behavior around this.
-- [ ] Use [the foreign build sandboxing approach](https://dune.readthedocs.io/en/stable/foreign-code.html#foreign-build-sandboxing) in dune to fix the liburing version?
+- [x] Use [the foreign build sandboxing approach](https://dune.readthedocs.io/en/stable/foreign-code.html#foreign-build-sandboxing) in dune to fix the liburing version?
