@@ -2,16 +2,24 @@
  (name io_uring)
  (public_name io_uring)
  (libraries core)
+ (foreign_archives uring)
  (foreign_stubs
   (language c)
-  (names io_uring_stubs))
- (c_library_flags :standard -luring)
- (preprocessor_deps config.h)
+  (names io_uring_stubs)
+  (include_dirs liburing/src/include)
+  (extra_deps liburing.a dlluring.so))
  (preprocess
   (pps ppx_jane)))
 
+(data_only_dirs liburing)
+
 (rule
- (targets config.h)
- (deps)
+ (deps (source_tree liburing))
+ (targets liburing.a dlluring.so)
  (action
-  (bash "cp %{lib:jst-config:config.h} .")))
+  (no-infer
+    (progn
+    (chdir liburing (run ./configure))
+    (chdir liburing/src (run make all))
+    (copy liburing/src/liburing.a liburing.a)
+    (copy liburing/src/liburing.so.2.0.0 dlluring.so)))))

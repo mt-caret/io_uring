@@ -27,13 +27,6 @@
   (pps ppx_jane)))
 
 (executables
- (names echo_event_loop)
- (modules echo_event_loop)
- (libraries core io_uring)
- (preprocess
-  (pps ppx_jane)))
-
-(executables
  (names promise)
  (modules promise)
  (libraries core httpaf io_uring)
