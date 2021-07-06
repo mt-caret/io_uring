@@ -78,7 +78,7 @@ CAMLprim value io_uring_prep_open_stub(value v_io_uring, value v_sqe_flags, valu
     return Val_bool(true);
   }
 
-  if (v_bstr_len < sizeof(struct open_how)) {
+  if (Long_val(v_bstr_len) < sizeof(struct open_how)) {
     uerror("bstr memory", Nothing);
   }
 
