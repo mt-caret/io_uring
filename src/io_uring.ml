@@ -29,8 +29,6 @@ module Tag = struct
   end
 end
 
-[%%import "config.h"]
-
 (* We use [Int63] rather than [Int] because these flags use 16 bits. *)
 module Poll_flags = struct
   external flag_pollin : unit -> Int63.t = "poll_POLLIN_flag"
